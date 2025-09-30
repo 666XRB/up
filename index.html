@@ -3,7 +3,36 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>图片上传展示</title>
+    <title>图片交换 - 跨设备共享</title>
+    <!-- Firebase SDK -->
+    <script type="module">
+       // Import the functions you need from the SDKs you need
+       import { initializeApp } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-app.js";
+       import { getDatabase, ref, orderByChild, onValue, set } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-database.js";
+       import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-analytics.js";
+       
+       // Your web app's Firebase configuration
+       // For Firebase JS SDK v7.20.0 and later, measurementId is optional
+       window.firebaseConfig = {
+         apiKey: "AIzaSyDH_EL-jcvUHzTdhXZxeASmSI3A6mQgZC8",
+         authDomain: "jiaohuan-34535.firebaseapp.com",
+         databaseURL: "https://jiaohuan-34535-default-rtdb.firebaseio.com",
+         projectId: "jiaohuan-34535",
+         storageBucket: "jiaohuan-34535.firebasestorage.app",
+         messagingSenderId: "453922265015",
+         appId: "1:453922265015:web:c0769f07325b4819023a32",
+         measurementId: "G-TV8F5D6JLM"
+       };
+       
+       // Initialize Firebase
+       window.app = initializeApp(window.firebaseConfig);
+       window.database = getDatabase(window.app);
+       window.analytics = getAnalytics(window.app);
+       window.ref = ref;
+       window.orderByChild = orderByChild;
+       window.onValue = onValue;
+       window.set = set;
+     </script>
     <style>
         * {
             margin: 0;
@@ -326,7 +355,7 @@
                 </button>
             </div>
             
-            <input type="file" id="fileInput" class="hidden" accept="image/*">
+            <input type="file" id="fileInput" class="hidden" accept="image/*" multiple>
             <!-- 相机输入 - 添加multiple属性以支持一次拍摄多张（部分设备支持） -->
             <input type="file" id="cameraInput" class="hidden" accept="image/*" capture="camera" multiple>
         </div>
@@ -369,8 +398,29 @@
             // 最大图片数量
             const MAX_IMAGES = 5;
             
-            // 从localStorage加载图片池
-            let imagePool = JSON.parse(localStorage.getItem('imagePool')) || [];
+            // 使用全局Firebase实例和配置
+            const database = window.database;
+            const imagesRef = window.ref(window.database, 'images');
+            
+            // 图片池变量
+            let imagePool = [];
+            
+            // 从Firebase加载图片池并设置实时监听器
+            window.onValue(window.orderByChild(imagesRef, 'timestamp'), (snapshot) => {
+                imagePool = snapshot.val() || [];
+                // 如果是对象形式，转换为数组
+                if (imagePool && !Array.isArray(imagePool)) {
+                    imagePool = Object.values(imagePool);
+                }
+                // 确保图片按上传时间排序
+                if (Array.isArray(imagePool)) {
+                    imagePool.sort((a, b) => a.timestamp - b.timestamp);
+                } else {
+                    imagePool = [];
+                }
+                renderImagePool();
+                console.log('图片池已从Firebase更新');
+            });
             
             // 初始化页面
             renderImagePool();
@@ -456,69 +506,129 @@
                     return;
                 }
                 
-                const file = files[0];
+                console.log(`开始处理${files.length}个文件`);
                 
-                // 验证文件类型
-                if (!file.type || !file.type.match('image.*')) {
-                    alert('请选择图片文件！');
+                // 存储需要处理的有效图片文件
+                const validImages = [];
+                
+                // 验证所有文件类型
+                for (let i = 0; i < files.length; i++) {
+                    const file = files[i];
+                    if (!file.type || !file.type.match('image.*')) {
+                        console.warn(`跳过非图片文件: ${file.name}`);
+                        continue;
+                    }
+                    validImages.push(file);
+                }
+                
+                if (validImages.length === 0) {
+                    alert('请选择有效的图片文件！');
                     return;
                 }
                 
-                const reader = new FileReader();
+                console.log(`成功筛选出${validImages.length}个有效图片文件`);
                 
-                reader.onload = function(e) {
-                    // 创建新图片数据对象
-                    const imageData = {
-                        id: Date.now(), // 使用时间戳作为唯一ID
-                        dataUrl: e.target.result,
-                        name: file.name,
-                        size: (file.size / 1024).toFixed(2),
-                        timestamp: Date.now() // 时间戳用于严格按上传顺序排序
+                // 处理所有有效图片
+                let processedCount = 0;
+                
+                // 为了保持队列逻辑，我们需要先准备好所有图片数据，然后一次性更新图片池
+                const newImages = [];
+                
+                validImages.forEach((file, index) => {
+                    const reader = new FileReader();
+                    
+                    reader.onload = function(e) {
+                        // 创建新图片数据对象
+                        const imageData = {
+                            id: Date.now() + index, // 使用时间戳+索引作为唯一ID
+                            dataUrl: e.target.result,
+                            name: file.name,
+                            size: (file.size / 1024).toFixed(2),
+                            timestamp: Date.now() + index // 时间戳+索引确保上传顺序
+                        };
+                        
+                        newImages.push(imageData);
+                        processedCount++;
+                        
+                        console.log(`已处理文件${processedCount}/${validImages.length}: ${file.name}`);
+                        
+                        // 当所有文件都处理完成后，一次性更新图片池
+                        if (processedCount === validImages.length) {
+                            updateImagePoolWithNewImages(newImages);
+                        }
                     };
                     
-                    // 详细的日志记录，便于调试
-                    console.log(`当前图片池大小: ${imagePool.length}, MAX_IMAGES: ${MAX_IMAGES}`);
+                    // 添加错误处理
+                    reader.onerror = function(error) {
+                        console.error(`文件读取失败: ${file.name}`, error);
+                        processedCount++;
+                        
+                        // 即使有文件读取失败，也要继续处理其他文件
+                        if (processedCount === validImages.length && newImages.length > 0) {
+                            updateImagePoolWithNewImages(newImages);
+                        } else if (processedCount === validImages.length) {
+                            alert('所有文件读取失败，请重试！');
+                        }
+                    };
                     
-                    // 严格实现队列（FIFO - 先进先出）逻辑
-                    while (imagePool.length >= MAX_IMAGES) {
-                        // 使用while循环确保无论如何都不会超过最大数量
-                        const removedImage = imagePool.shift();
-                        console.log(`移除最早的图片: ${removedImage.name}, ID: ${removedImage.id}`);
-                    }
-                    
-                    // 添加新图片到队列末尾
+                    reader.readAsDataURL(file);
+                });
+            }
+            
+            // 批量更新图片池函数
+            function updateImagePoolWithNewImages(newImages) {
+                console.log(`准备更新图片池，当前大小: ${imagePool.length}, 新增图片数量: ${newImages.length}`);
+                
+                // 严格实现队列（FIFO - 先进先出）逻辑
+                // 计算需要移除的旧图片数量
+                const totalImagesAfterAddition = imagePool.length + newImages.length;
+                const imagesToRemove = Math.max(0, totalImagesAfterAddition - MAX_IMAGES);
+                
+                if (imagesToRemove > 0) {
+                    console.log(`需要移除${imagesToRemove}个最早的图片`);
+                    // 移除最早的图片
+                    const removedImages = imagePool.splice(0, imagesToRemove);
+                    removedImages.forEach(img => {
+                        console.log(`移除最早的图片: ${img.name}, ID: ${img.id}`);
+                    });
+                }
+                
+                // 添加所有新图片到队列末尾
+                newImages.forEach(imageData => {
                     imagePool.push(imageData);
                     console.log(`添加新图片: ${imageData.name}, ID: ${imageData.id}`);
-                    
-                    // 确保图片按上传时间严格排序（防止任何排序问题）
-                    imagePool.sort((a, b) => a.timestamp - b.timestamp);
-                    console.log(`排序后图片池大小: ${imagePool.length}`);
-                    
-                    // 保存到localStorage - 确保完全覆盖旧数据
-                    try {
-                        localStorage.removeItem('imagePool'); // 先清除
-                        localStorage.setItem('imagePool', JSON.stringify(imagePool)); // 再保存
-                        console.log('图片池已成功保存到localStorage');
-                    } catch (error) {
-                        console.error('保存到localStorage失败:', error);
-                        // 即使localStorage失败，也继续渲染
+                });
+                
+                // 确保图片按上传时间严格排序
+                imagePool.sort((a, b) => a.timestamp - b.timestamp);
+                console.log(`排序后图片池大小: ${imagePool.length}`);
+                
+                // 保存到Firebase数据库
+                try {
+                    // 清空现有数据
+                    window.set(imagesRef, null);
+                    // 保存新图片池数据
+                    if (imagePool.length > 0) {
+                        // 将数组转换为对象，使用图片ID作为键
+                        const imagesObject = {};
+                        imagePool.forEach((image, index) => {
+                            // 使用index作为键，确保按顺序存储
+                            imagesObject[index] = image;
+                        });
+                        window.set(imagesRef, imagesObject);
                     }
-                    
-                    // 重新渲染图片池
-                    renderImagePool();
-                    
-                    // 重置文件输入
-                    fileInput.value = '';
-                    cameraInput.value = '';
-                };
+                    console.log('图片池已成功保存到Firebase数据库');
+                } catch (error) {
+                    console.error('保存到Firebase数据库失败:', error);
+                    alert('同步失败，请检查网络连接并重试！');
+                }
                 
-                // 添加错误处理
-                reader.onerror = function(error) {
-                    console.error('文件读取失败:', error);
-                    alert('文件读取失败，请重试！');
-                };
+                // 重新渲染图片池
+                renderImagePool();
                 
-                reader.readAsDataURL(file);
+                // 重置文件输入
+                fileInput.value = '';
+                cameraInput.value = '';
             }
             
             // 渲染图片池
@@ -618,10 +728,25 @@
                                 imagePool = imagePool.filter(img => img.id !== imageDataToDelete.id);
                                 console.log(`删除图片: ${imageDataToDelete.name}, ID: ${imageDataToDelete.id}`);
                                 
-                                // 保存更新后的图片池
-                                localStorage.removeItem('imagePool'); // 先清除
-                                localStorage.setItem('imagePool', JSON.stringify(imagePool)); // 再保存
-                                console.log('删除后图片池已成功保存到localStorage');
+                                // 保存更新后的图片池到Firebase数据库
+                        try {
+                            // 清空现有数据
+                            window.set(imagesRef, null);
+                            // 保存新图片池数据
+                            if (imagePool.length > 0) {
+                                // 将数组转换为对象，使用图片ID作为键
+                                const imagesObject = {};
+                                imagePool.forEach((image, index) => {
+                                    // 使用index作为键，确保按顺序存储
+                                    imagesObject[index] = image;
+                                });
+                                window.set(imagesRef, imagesObject);
+                            }
+                            console.log('删除后图片池已成功保存到Firebase数据库');
+                        } catch (error) {
+                            console.error('保存到Firebase数据库失败:', error);
+                            alert('同步失败，请检查网络连接并重试！');
+                        }
                                 
                                 // 重新渲染
                                 renderImagePool();
