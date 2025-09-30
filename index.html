@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>图片交换 - 跨设备共享</title>
+    <title>文件暂存站</title>
     <!-- LeanCloud SDK (本地版本) -->
     <script src="av-min.js"></script>
     <script>
@@ -386,25 +386,25 @@
 </head>
 <body>
     <div class="container">
-        <h1>图片交换</h1>
+        <h1>文件暂存站</h1>
         <p class="description">简单快速地在不同设备间共享图片</p >
         <p class="mobile-tips"></p >
         
         <div class="upload-area" id="uploadArea">
             <div class="upload-icon">📁</div>
-            <p class="upload-text">拖放图片到此处或点击上传</p >
-            <p class="upload-text">支持 JPG, PNG, GIF 格式</p >
+            <p class="upload-text">拖放文件到此处或点击上传</p >
+            <p class="upload-text">支持 JPG, PNG, GIF, PDF 等常见文件格式</p >
             
-            <div class="button-group">
+            <!-- <div class="button-group">
                 <button class="btn btn-primary" id="uploadBtn">
-                    <span>⭐</span> 选择图片
+                    <span>⭐</span> 选择文件
                 </button>
                 <button class="btn btn-secondary" id="cameraBtn">
                     <span>📸</span> 拍照上传
                 </button>
-            </div>
+            </div> -->
             
-            <input type="file" id="fileInput" class="hidden" accept="image/*" multiple>
+            <input type="file" id="fileInput" class="hidden" accept="image/*,application/pdf,.pdf" multiple>
             <!-- 相机输入 - 添加multiple属性以支持一次拍摄多张（部分设备支持） -->
             <input type="file" id="cameraInput" class="hidden" accept="image/*" capture="camera" multiple>
         </div>
@@ -475,7 +475,8 @@
                         name: result.get('name'),
                         dataUrl: result.get('dataUrl'),
                         size: result.get('size'),
-                        timestamp: result.get('timestamp')
+                        timestamp: result.get('timestamp'),
+                        type: result.get('type') // 确保获取type字段
                     }));
                     
                     // 确保图片按上传时间排序
@@ -566,220 +567,498 @@
                 // 设置上传状态
                 isUploading = true;
                 
-                // 添加新图片到图片池，不再限制数量
-                imagePool = [...newImages, ...imagePool];
+                try {
+                    // 确保newImages是一个数组
+                    if (!Array.isArray(newImages)) {
+                        console.error('参数验证失败: newImages必须是一个数组');
+                        throw new Error('newImages必须是一个数组');
+                    }
+                    
+                    // 检查newImages数组是否为空
+                    if (newImages.length === 0) {
+                        console.warn('没有要添加的新图片');
+                        isUploading = false;
+                        return;
+                    }
+                    
+                    // 创建一个包含所有图片ID的集合用于去重
+                    const existingIds = new Set();
+                    
+                    // 创建一个新的图片池，只包含唯一的图片
+                    const uniqueImages = [];
+                    let validNewImages = 0;
+                    
+                    try {
+                        // 首先添加新图片，确保它们在列表前面，同时进行数据有效性检查
+                        newImages.forEach(img => {
+                            try {
+                                // 验证图片对象的必要属性
+                                if (!img || typeof img !== 'object' || !img.id || !img.name || !img.dataUrl) {
+                                    console.warn('跳过无效的图片对象:', img);
+                                    return;
+                                }
+                                
+                                // 检查数据URL格式
+                                if (typeof img.dataUrl !== 'string' || !img.dataUrl.startsWith('data:')) {
+                                    console.warn('无效的Data URL格式:', img.name);
+                                    return;
+                                }
+                                
+                                if (!existingIds.has(img.id)) {
+                                    existingIds.add(img.id);
+                                    uniqueImages.push(img);
+                                    validNewImages++;
+                                } else {
+                                    console.log('跳过重复图片:', img.name, '(ID:', img.id, ')');
+                                }
+                            } catch (imgError) {
+                                console.error('处理单个图片时出错:', imgError);
+                                // 继续处理其他图片，不中断整个过程
+                            }
+                        });
+                        
+                        // 如果没有有效的新图片，中止操作
+                        if (validNewImages === 0) {
+                            console.warn('没有有效的新图片可以添加');
+                            isUploading = false;
+                            return;
+                        }
+                        
+                        // 然后添加现有图片池中不在新图片中的图片
+                        if (Array.isArray(imagePool)) {
+                            imagePool.forEach(img => {
+                                try {
+                                    if (img && img.id && !existingIds.has(img.id)) {
+                                        existingIds.add(img.id);
+                                        uniqueImages.push(img);
+                                    }
+                                } catch (poolImgError) {
+                                    console.error('处理现有图片池中的图片时出错:', poolImgError);
+                                    // 继续处理其他图片
+                                }
+                            });
+                        } else {
+                            console.warn('imagePool不是有效的数组，将创建新的图片池');
+                        }
+                        
+                        // 更新图片池
+                        imagePool = uniqueImages;
+                        console.log(`已更新图片池，总图片数: ${imagePool.length}，新增有效图片数: ${validNewImages}`);
+                        
+                        // 重新渲染前进行防御性检查
+                        try {
+                            renderImagePool();
+                        } catch (renderError) {
+                            console.error('重新渲染图片池时出错:', renderError);
+                            // 继续执行保存操作，即使渲染失败
+                        }
+                        
+                        // 智能决定保存方式
+                        if (typeof AV !== 'undefined' && AV && typeof AV.Object !== 'undefined' && typeof AV.Object.saveAll === 'function') {
+                            // 检查网络连接状态
+                            if (navigator && navigator.onLine) {
+                                saveToLeanCloud();
+                            } else {
+                                console.warn('当前离线，将数据保存到本地存储');
+                                saveToLocalStorage();
+                            }
+                        } else {
+                            console.log('LeanCloud SDK不可用，将数据保存到本地存储');
+                            saveToLocalStorage();
+                        }
+                    } catch (error) {
+                        console.error('更新图片池过程中发生严重错误:', error);
+                        throw error; // 重新抛出以便外层catch处理
+                    }
+                } catch (error) {
+                    console.error('更新图片池时发生错误:', error);
+                    
+                    // 根据错误类型提供不同的提示信息
+                    let errorMessage = '上传失败: ' + (error.message || '未知错误');
+                    if (error.name === 'QuotaExceededError' || error.message.includes('storage')) {
+                        errorMessage = '上传失败: 本地存储空间不足，请清理浏览器缓存后重试';
+                    } else if (error.message.includes('JSON')) {
+                        errorMessage = '上传失败: 数据格式错误';
+                    }
+                    
+                    alert(errorMessage);
+                    isUploading = false;
+                }
                 
-                // 重新渲染
-                renderImagePool();
-                
-                // 检查AV是否定义，以支持本地运行
-                if (typeof AV !== 'undefined' && AV && typeof AV.Object !== 'undefined') {
+                // 保存到LeanCloud的函数
+                function saveToLeanCloud() {
                     console.log('准备保存图片到LeanCloud...');
                     try {
-                        // 保存更新后的图片池到LeanCloud数据库
-                        try {
-                            const ImagePool = AV.Object.extend('ImagePool');
-                            console.log('ImagePool 类创建成功');
-                            
-                            // 不再删除现有数据，而是直接保存当前图片池
-                            console.log('直接保存图片池数据，不删除现有数据...');
-                            
-                            // 创建一个新的Promise来保存数据
-                            return new Promise((resolve, reject) => {
-                                // 保存新图片池数据
-                                if (imagePool.length > 0) {
-                                    // 创建一个ACL，允许任何人读取和写入
-                                    const acl = new AV.ACL();
-                                    acl.setPublicReadAccess(true);
-                                    acl.setPublicWriteAccess(true);
-                                     
-                                    const imageObjects = imagePool.map(image => {
-                                        const imageObject = new ImagePool();
-                                        imageObject.set('name', image.name);
-                                        imageObject.set('dataUrl', image.dataUrl);
-                                        imageObject.set('size', image.size);
-                                        imageObject.set('timestamp', image.timestamp);
-                                         
-                                        // 为每个对象设置ACL
-                                        imageObject.setACL(acl);
-                                         
-                                        console.log('创建图片对象:', image.name);
-                                        return imageObject;
-                                    });
-                                     
-                                    // 检查 AV.Object.saveAll 方法是否存在
-                                    if (typeof AV.Object.saveAll === 'function') {
-                                        console.log('准备保存新图片数据，数量:', imageObjects.length);
-                                        AV.Object.saveAll(imageObjects)
-                                            .then(resolve)
-                                            .catch(reject);
-                                    } else {
-                                        // 如果 saveAll 方法不存在，尝试逐个保存
-                                        console.log('AV.Object.saveAll 方法不可用，尝试逐个保存');
-                                        const savePromises = imageObjects.map(obj => obj.save());
-                                        Promise.all(savePromises)
-                                            .then(resolve)
-                                            .catch(reject);
-                                    }
-                                } else {
-                                    resolve();
-                                }
-                            }).then(() => {
-                                console.log('图片池已成功保存到LeanCloud数据库！');
-                                alert('上传成功！图片已保存到LeanCloud');
-                                isUploading = false;
-                            }).catch(error => {
-                                console.error('保存到LeanCloud数据库失败:', error);
-                                console.error('错误详情:', JSON.stringify(error));
-                                // 提供更友好的错误信息，区分不同类型的错误
-                                let errorMessage = error.message || '未知错误';
-                                if (errorMessage.includes('Forbidden') || errorMessage.includes('ACL')) {
-                                    errorMessage = '权限错误：可能是LeanCloud安全规则限制。数据可能已部分保存，建议检查LeanCloud控制台设置。';
-                                } else if (errorMessage.includes('Network')) {
-                                    errorMessage = '网络错误：请检查您的网络连接后重试。';
-                                }
-                                alert('上传失败: ' + errorMessage + '\n请查看控制台获取详细信息');
-                                isUploading = false;
-                            });
-                        } catch (error) {
-                            console.error('LeanCloud操作初始化失败:', error);
-                            alert('上传初始化失败: ' + (error.message || '未知错误'));
+                        const ImagePool = AV.Object.extend('ImagePool');
+                        console.log('ImagePool 类创建成功');
+                        
+                        // 创建一个ACL，允许任何人读取和写入
+                        const acl = new AV.ACL();
+                        acl.setPublicReadAccess(true);
+                        acl.setPublicWriteAccess(true);
+                          
+                        // 只保存新上传的图片，而不是整个图片池
+                        // 创建newImages数组的深拷贝，确保只保存当前上传的图片
+                        const newImagesCopy = JSON.parse(JSON.stringify(newImages));
+                        const imageObjects = newImagesCopy.map(image => {
+                            const imageObject = new ImagePool();
+                            imageObject.set('name', image.name);
+                            imageObject.set('dataUrl', image.dataUrl);
+                            imageObject.set('size', image.size);
+                            imageObject.set('timestamp', image.timestamp);
+                            imageObject.set('type', image.type);
+                              
+                            // 为每个对象设置ACL
+                            imageObject.setACL(acl);
+                              
+                            console.log('创建图片对象:', image.name);
+                            return imageObject;
+                        });
+                          
+                        // 检查 AV.Object.saveAll 方法是否存在
+                        if (typeof AV.Object.saveAll === 'function' && imageObjects.length > 0) {
+                            console.log('准备保存新图片数据，数量:', imageObjects.length);
+                            AV.Object.saveAll(imageObjects)
+                                .then(() => {
+                                    console.log('图片已成功保存到LeanCloud数据库！');
+                                    alert('上传成功！图片已保存到LeanCloud');
+                                    isUploading = false;
+                                })
+                                .catch(error => {
+                                    handleLeanCloudError(error);
+                                });
+                        } else {
+                            console.log('没有新图片需要保存到LeanCloud');
+                            alert('上传成功！');
                             isUploading = false;
                         }
                     } catch (error) {
-                        console.error('LeanCloud操作过程中发生异常:', error);
-                        alert('上传过程中发生异常: ' + (error.message || '未知异常'));
-                        isUploading = false;
+                        handleLeanCloudError(error);
                     }
-                } else {
-                    console.log('LeanCloud不可用，仅在本地更新图片池');
-                    // 保存到localStorage作为模拟数据
-                    try {
-                        localStorage.setItem('imagePoolMockData', JSON.stringify(imagePool));
-                    console.log('本地模拟数据已保存');
-                    alert('LeanCloud不可用，已保存到本地');
-                } catch (error) {
-                    console.error('保存本地模拟数据失败:', error);
-                    alert('保存本地数据失败');
-                } finally {
-                    // 无论成功或失败都重置上传状态
+                }
+                
+                // 处理LeanCloud错误
+                function handleLeanCloudError(error) {
+                    console.error('保存到LeanCloud数据库失败:', error);
+                    console.error('错误详情:', JSON.stringify(error));
+                    
+                    // 提供更友好的错误信息，区分不同类型的错误
+                    let errorMessage = error.message || '未知错误';
+                    if (errorMessage.includes('Forbidden') || errorMessage.includes('ACL')) {
+                        errorMessage = '权限错误：可能是LeanCloud安全规则限制。';
+                    } else if (errorMessage.includes('Network')) {
+                        errorMessage = '网络错误：请检查您的网络连接后重试。';
+                    }
+                    
+                    alert('上传失败: ' + errorMessage + '\n请查看控制台获取详细信息');
                     isUploading = false;
                 }
-            }
+                
+                // 保存到localStorage的函数
+                function saveToLocalStorage() {
+                    console.log('LeanCloud不可用，仅在本地更新图片池');
+                    try {
+                        localStorage.setItem('imagePoolMockData', JSON.stringify(imagePool));
+                        console.log('本地模拟数据已保存');
+                        alert('LeanCloud不可用，已保存到本地');
+                    } catch (error) {
+                        console.error('保存本地模拟数据失败:', error);
+                        alert('保存本地数据失败');
+                    } finally {
+                        // 无论成功或失败都重置上传状态
+                        isUploading = false;
+                    }
+                }
             }
             
             // 处理文件上传 - 移除上传数量限制，支持多格式文件
             function handleFileUpload(files) {
-                // 防止重复上传
-                if (isUploading) {
-                    console.warn('已有上传任务正在进行中，请等待完成后再上传');
-                    return;
-                }
-                
-                // 支持的文件类型：图片和视频
-                const supportedFiles = Array.from(files).filter(file => 
-                    file.type.startsWith('image/') || file.type.startsWith('video/')
-                );
-                
-                if (supportedFiles.length === 0) {
-                    alert('请选择有效的图片或视频文件！');
-                    return;
-                }
-                
-                // 不再限制单次上传数量
-                const filesToProcess = supportedFiles;
-                
-                // 读取并处理图片文件
-                const newImages = [];
-                let processedCount = 0;
-                
-                filesToProcess.forEach(file => {
-                    const reader = new FileReader();
-                    
-                    reader.onload = function(event) {
-                        const dataUrl = event.target.result;
-                        
-                        // 根据文件类型进行不同处理
-                        if (file.type.startsWith('image/')) {
-                            // 压缩图片
-                            compressImage(dataUrl, file.type, 0.8, (compressedDataUrl) => {
-                                processFile(file, compressedDataUrl);
-                            });
-                        } else if (file.type.startsWith('video/')) {
-                            // 视频文件不需要压缩，直接处理
-                            processFile(file, dataUrl);
-                        }
-                    };
-                    
-                    reader.onerror = function() {
-                        console.error(`读取文件${file.name}失败`);
-                        processedCount++;
-                    };
-                    
-                    // 以Data URL形式读取文件
-                    reader.readAsDataURL(file);
-                });
-                
-                // 处理文件数据的辅助函数
-                function processFile(file, dataUrl) {
-                    // 计算文件大小（KB）
-                    const byteString = atob(dataUrl.split(',')[1]);
-                    const byteLength = byteString.length;
-                    const sizeInKB = (byteLength / 1024).toFixed(1);
-                    
-                    // 创建文件数据对象
-                    const fileData = {
-                        id: Date.now().toString() + Math.floor(Math.random() * 1000).toString(),
-                        name: file.name,
-                        dataUrl: dataUrl,
-                        size: sizeInKB,
-                        timestamp: Date.now(),
-                        type: file.type
-                    };
-                    
-                    newImages.push(fileData);
-                    processedCount++;
-                    
-                    // 当所有文件处理完成后更新图片池
-                    if (processedCount === filesToProcess.length) {
-                        updateImagePoolWithNewImages(newImages);
-                        console.log(`已成功上传${newImages.length}个文件`);
+                try {
+                    // 防止重复上传
+                    if (isUploading) {
+                        console.warn('已有上传任务正在进行中，请等待完成后再上传');
+                        alert('上传中，请等待当前任务完成');
+                        return;
                     }
+                    
+                    // 确保files是有效的FileList或数组
+                    if (!files || (!files.length && !files[0])) {
+                        console.warn('没有提供有效的文件列表');
+                        return;
+                    }
+                    
+                    // 支持的文件类型：图片、视频和PDF
+                    const supportedFiles = Array.from(files).filter(file => 
+                        file.type.startsWith('image/') || file.type.startsWith('video/') || file.type === 'application/pdf'
+                    );
+                    
+                    if (supportedFiles.length === 0) {
+                        alert('请选择有效的图片、视频或PDF文件！');
+                        return;
+                    }
+                    
+                    // 不再限制单次上传数量
+                    const filesToProcess = supportedFiles;
+                    console.log(`准备处理 ${filesToProcess.length} 个文件`);
+                    
+                    // 设置上传状态
+                    isUploading = true;
+                    
+                    // 读取并处理图片文件 - 确保每次都是全新数组
+                    const newImages = [];
+                    let processedCount = 0;
+                    let errorCount = 0;
+                    let isProcessingAborted = false;
+                    console.log('创建新的newImages数组');
+                    
+                    // 检查是否有足够的存储空间（简单检查）
+                    try {
+                        // 检查localStorage是否可用
+                        const testKey = '__storage_test__';
+                        localStorage.setItem(testKey, testKey);
+                        localStorage.removeItem(testKey);
+                    } catch (storageError) {
+                        console.error('本地存储不可用:', storageError);
+                        alert('浏览器存储空间不足，可能导致上传失败');
+                        // 继续尝试上传，因为可能还有LeanCloud可用
+                    }
+                    
+                    filesToProcess.forEach(file => {
+                        // 如果处理已中止，不再处理新文件
+                        if (isProcessingAborted) {
+                            return;
+                        }
+                        
+                        const reader = new FileReader();
+                        
+                        reader.onload = function(event) {
+                            try {
+                                const dataUrl = event.target.result;
+                                
+                                // 检查Data URL是否有效
+                                if (!dataUrl || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:')) {
+                                    console.error(`无效的Data URL: ${file.name}`);
+                                    errorCount++;
+                                    processedCount++;
+                                    checkProcessingComplete();
+                                    return;
+                                }
+                                
+                                // 根据文件类型进行不同处理
+                                if (file.type.startsWith('image/')) {
+                                    // 保持原图质量，使用最高质量参数1.0
+                                    compressImage(dataUrl, file.type, 1.0, (processedDataUrl) => {
+                                        processFile(file, processedDataUrl);
+                                    });
+                                } else if (file.type.startsWith('video/') || file.type === 'application/pdf') {
+                                    // 视频文件和PDF文件直接处理
+                                    processFile(file, dataUrl);
+                                }
+                            } catch (eventError) {
+                                console.error(`处理文件加载事件时出错: ${file.name}`, eventError);
+                                errorCount++;
+                                processedCount++;
+                                checkProcessingComplete();
+                            }
+                        };
+                        
+                        reader.onerror = function() {
+                            console.error(`读取文件${file.name}失败`);
+                            errorCount++;
+                            processedCount++;
+                            checkProcessingComplete();
+                        };
+                        
+                        reader.onabort = function() {
+                            console.warn(`文件读取被中止: ${file.name}`);
+                            errorCount++;
+                            processedCount++;
+                            checkProcessingComplete();
+                        };
+                        
+                        // 设置超时处理
+                        let readTimeout = setTimeout(() => {
+                            console.error(`读取文件${file.name}超时`);
+                            reader.abort();
+                            errorCount++;
+                            processedCount++;
+                            checkProcessingComplete();
+                        }, 30000); // 30秒超时
+                        
+                        // 以Data URL形式读取文件
+                        try {
+                            reader.readAsDataURL(file);
+                        } catch (readError) {
+                            console.error(`读取文件${file.name}时出错`, readError);
+                            clearTimeout(readTimeout);
+                            errorCount++;
+                            processedCount++;
+                            checkProcessingComplete();
+                        }
+                    });
+                    
+                    // 处理文件数据的辅助函数
+                    function processFile(file, dataUrl) {
+                        try {
+                            // 防御性检查
+                            if (!file || !dataUrl) {
+                                console.warn('无效的文件数据，跳过处理');
+                                errorCount++;
+                                processedCount++;
+                                checkProcessingComplete();
+                                return;
+                            }
+                            
+                            // 确保newImages数组存在（防御性编程）
+                            if (!newImages) {
+                                console.error('newImages数组不存在，这是一个严重错误');
+                                isProcessingAborted = true;
+                                errorCount++;
+                                processedCount++;
+                                checkProcessingComplete();
+                                return;
+                            }
+                            
+                            // 计算文件大小（KB）
+                            try {
+                                const byteString = atob(dataUrl.split(',')[1]);
+                                const byteLength = byteString.length;
+                                const sizeInKB = (byteLength / 1024).toFixed(1);
+                                
+                                // 创建文件数据对象，使用更强大的ID生成方式
+                                const uniqueId = `${Date.now()}-${Math.floor(Math.random() * 10000)}-${Math.random().toString(36).substr(2, 9)}`;
+                                const fileData = {
+                                    id: uniqueId,
+                                    name: file.name,
+                                    dataUrl: dataUrl,
+                                    size: sizeInKB,
+                                    timestamp: Date.now(),
+                                    type: file.type
+                                };
+                                
+                                // 确保文件数据对象有效
+                                if (fileData.id && fileData.name && fileData.dataUrl) {
+                                    newImages.push(fileData);
+                                    console.log(`已添加文件到newImages数组: ${file.name}, 当前数组长度: ${newImages.length}`);
+                                }
+                            } catch (error) {
+                                console.error('处理文件数据时发生错误:', error);
+                                errorCount++;
+                            }
+                        } catch (processError) {
+                            console.error('处理文件时发生未捕获异常:', processError);
+                            errorCount++;
+                        } finally {
+                            processedCount++;
+                            checkProcessingComplete();
+                        }
+                    }
+                    
+                    // 检查处理是否完成
+                    function checkProcessingComplete() {
+                        console.log(`已处理文件数量: ${processedCount}/${filesToProcess.length}, 错误数: ${errorCount}`);
+                        
+                        // 当所有文件处理完成后更新图片池
+                        if (processedCount === filesToProcess.length) {
+                            if (newImages.length > 0) {
+                                updateImagePoolWithNewImages(newImages);
+                                
+                                // 提供清晰的上传结果反馈
+                                let message = `已成功上传${newImages.length}个文件`;
+                                if (errorCount > 0) {
+                                    message += `，有${errorCount}个文件上传失败`;
+                                }
+                                console.log(message);
+                                
+                                // 只有在没有错误时才显示成功提示
+                                if (errorCount === 0) {
+                                    alert(message);
+                                } else {
+                                    // 有错误时显示详细信息
+                                    alert(`${message}\n请查看控制台获取详细错误信息`);
+                                }
+                            } else {
+                                console.warn('没有成功处理任何文件');
+                                alert('所有文件上传失败，请重试');
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.error('处理文件上传时发生严重错误:', error);
+                    isUploading = false;
+                    alert('上传过程中发生错误，请重试');
                 }
             }
             
-            // 图片压缩函数
+            // 图片压缩函数 - 修改为默认保持原图质量
             function compressImage(dataUrl, type, quality, callback) {
+                // 参数验证
+                if (!dataUrl || !callback) {
+                    console.error('compressImage: 缺少必要参数');
+                    if (callback) callback(dataUrl); // 如果有回调函数，返回原始数据
+                    return;
+                }
+                
                 const img = new Image();
+                let canvas = null;
                 
                 img.onload = function() {
-                    const canvas = document.createElement('canvas');
-                    const ctx = canvas.getContext('2d');
-                    
-                    // 设置最大尺寸（例如1024px）
-                    const maxSize = 1024;
-                    let width = img.width;
-                    let height = img.height;
-                    
-                    if (width > height && width > maxSize) {
-                        height *= maxSize / width;
-                        width = maxSize;
-                    } else if (height > maxSize) {
-                        width *= maxSize / height;
-                        height = maxSize;
+                    try {
+                        canvas = document.createElement('canvas');
+                        const ctx = canvas.getContext('2d');
+                        
+                        if (!ctx) {
+                            console.error('compressImage: 创建Canvas上下文失败');
+                            callback(dataUrl);
+                            return;
+                        }
+                        
+                        // 保持原始尺寸，不进行缩放
+                        let width = img.width;
+                        let height = img.height;
+                        
+                        // 确保尺寸为有效数值
+                        width = Math.max(1, Math.floor(width));
+                        height = Math.max(1, Math.floor(height));
+                        
+                        // 确保尺寸为有效数值
+                        width = Math.max(1, Math.floor(width));
+                        height = Math.max(1, Math.floor(height));
+                        
+                        canvas.width = width;
+                        canvas.height = height;
+                        
+                        // 在画布上绘制图片
+                        ctx.drawImage(img, 0, 0, width, height);
+                        
+                        // 转换为Data URL，使用最高质量
+                        try {
+                            // 使用传入的quality参数，如果没有则默认为1.0（最高质量）
+                            const processedDataUrl = canvas.toDataURL(type || 'image/jpeg', quality || 1.0);
+                            callback(processedDataUrl);
+                        } catch (toDataUrlError) {
+                            console.error('compressImage: 转换DataURL失败:', toDataUrlError);
+                            callback(dataUrl);
+                        }
+                    } catch (error) {
+                        console.error('compressImage: 压缩过程中出错:', error);
+                        callback(dataUrl); // 返回原始数据
+                    } finally {
+                        // 释放canvas资源（在某些浏览器中可能有用）
+                        if (canvas) {
+                            canvas.width = 0;
+                            canvas.height = 0;
+                        }
                     }
-                    
-                    canvas.width = width;
-                    canvas.height = height;
-                    
-                    // 在画布上绘制图片
-                    ctx.drawImage(img, 0, 0, width, height);
-                    
-                    // 转换为压缩后的Data URL
-                    const compressedDataUrl = canvas.toDataURL(type, quality);
-                    callback(compressedDataUrl);
                 };
                 
+                // 图片加载错误处理
+                img.onerror = function() {
+                    console.error('compressImage: 图片加载失败');
+                    callback(dataUrl); // 返回原始数据
+                };
+                
+                // 设置图片源
                 img.src = dataUrl;
             }
             
@@ -906,20 +1185,86 @@
                 });
             }
             
-            // 初始化时加载图片池
-            loadImagesFromLeanCloud();
-            
-            // 设置定时刷新，每5秒尝试一次
-            setInterval(() => {
-                if (typeof AV !== 'undefined' && navigator.onLine) {
-                    loadImagesFromLeanCloud();
-                }
-            }, 5000);
-            
             // 全局变量，用于控制删除确认弹窗、右键菜单和上传状态
             let deleteConfirmationActive = false;
             let currentContextMenu = null;
             let isUploading = false;
+            let refreshTimer = null;
+            let userActive = false;
+            let lastUserActivityTime = Date.now();
+            
+            // 用户活动检测
+            function setupUserActivityDetection() {
+                // 监听用户操作事件
+                const activityEvents = ['mousemove', 'keydown', 'touchstart', 'scroll'];
+                
+                activityEvents.forEach(event => {
+                    document.addEventListener(event, function() {
+                        userActive = true;
+                        lastUserActivityTime = Date.now();
+                    }, { passive: true });
+                });
+                
+                // 定期检查用户活动状态
+                setInterval(() => {
+                    // 如果30秒内没有用户活动，则认为用户不活跃
+                    if (Date.now() - lastUserActivityTime > 30000) {
+                        userActive = false;
+                    }
+                }, 5000);
+            }
+            
+            // 智能刷新函数
+            function setupSmartRefresh() {
+                // 清除之前的定时器（如果存在）
+                if (refreshTimer) {
+                    clearInterval(refreshTimer);
+                }
+                
+                // 初始化时加载图片池
+                loadImagesFromLeanCloud();
+                
+                // 设置智能刷新机制
+                refreshTimer = setInterval(() => {
+                    // 检查条件：
+                    // 1. LeanCloud SDK已加载
+                    // 2. 网络已连接
+                    // 3. 不在上传状态
+                    // 4. 用户不活跃（减少打扰）
+                    if (typeof AV !== 'undefined' && 
+                        navigator.onLine && 
+                        !isUploading && 
+                        !userActive) {
+                        loadImagesFromLeanCloud();
+                    }
+                }, 15000); // 增加刷新间隔到15秒，减少服务器压力
+            }
+            
+            // 临时暂停刷新
+            function pauseRefresh(temporaryPauseMs = 30000) {
+                if (refreshTimer) {
+                    clearInterval(refreshTimer);
+                    
+                    // 临时暂停后恢复刷新
+                    setTimeout(() => {
+                        if (!isUploading) {
+                            setupSmartRefresh();
+                        }
+                    }, temporaryPauseMs);
+                }
+            }
+            
+            // 初始化智能刷新和用户活动检测
+            setupUserActivityDetection();
+            setupSmartRefresh();
+            
+            // 页面卸载时清理定时器
+            window.addEventListener('beforeunload', function() {
+                if (refreshTimer) {
+                    clearInterval(refreshTimer);
+                    refreshTimer = null;
+                }
+            });
             
             // 添加CSS样式到head
             function addStyles() {
@@ -958,6 +1303,76 @@
                         max-height: 70vh;
                         border-radius: 10px;
                     }
+                    
+                    /* PDF预览样式 */
+                    .pdf-preview {
+                        display: flex;
+                        flex-direction: column;
+                        align-items: center;
+                        justify-content: center;
+                        height: 100%;
+                        width: 100%;
+                        background-color: #f8f9fa;
+                        padding: 10px;
+                        border-radius: 8px;
+                        border: 1px solid #e9ecef;
+                        transition: all 0.3s ease;
+                    }
+                    
+                    .pdf-icon {
+                        font-size: 50px;
+                        margin-bottom: 15px;
+                        transition: transform 0.3s ease;
+                    }
+                    
+                    .pdf-name {
+                        font-size: 0.8rem;
+                        color: #2c3e50;
+                        text-align: center;
+                        word-break: break-word;
+                        max-width: 100%;
+                        overflow: hidden;
+                        text-overflow: ellipsis;
+                        display: -webkit-box;
+                        -webkit-line-clamp: 2;
+                        -webkit-box-orient: vertical;
+                    }
+                    
+                    /* 鼠标悬停效果 */
+                    .image-item:hover .pdf-preview {
+                        background-color: #e9ecef;
+                        border-color: #dee2e6;
+                    }
+                    
+                    .image-item:hover .pdf-icon {
+                        transform: scale(1.1);
+                    }
+                    
+                    /* 模态框中PDF样式 */
+                    .modal-content embed.modal-pdf {
+                        border: none;
+                        border-radius: 10px;
+                        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+                        transition: opacity 0.3s ease;
+                    }
+                    
+                    /* PDF加载动画 */
+                    .modal-pdf-loading {
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        height: 70vh;
+                        color: #6c757d;
+                        font-size: 1.2rem;
+                    }
+                    
+                    /* PDF信息展示 */
+                    .pdf-info {
+                        margin-top: 10px;
+                        text-align: center;
+                        color: #6c757d;
+                        font-size: 0.9rem;
+                    }
                 `;
                 document.head.appendChild(style);
             }
@@ -967,67 +1382,263 @@
 
             // 渲染文件池
             function renderImagePool() {
-                if (!imagesGrid) {
-                    console.error('imagesGrid元素未找到');
-                    return;
-                }
-                
-                imagesGrid.innerHTML = '';
-                
-                if (imagePool.length === 0) {
-                    const emptyState = document.createElement('div');
-                    emptyState.className = 'empty-state';
-                    emptyState.innerHTML = '<p>暂无文件，请上传</p>';
-                    imagesGrid.appendChild(emptyState);
-                    return;
-                }
-                
-                imagePool.forEach(fileData => {
-                    const fileItem = document.createElement('div');
-                    fileItem.className = 'image-item';
-                    
-                    // 根据文件类型创建不同的预览元素
-                    if (fileData.type && fileData.type.startsWith('video/')) {
-                        // 视频文件
-                        const video = document.createElement('video');
-                        video.src = fileData.dataUrl;
-                        video.alt = fileData.name;
-                        video.setAttribute('data-name', fileData.name); // 添加data-name属性，便于后续查找
-                        video.controls = false; // 缩略图不显示控制栏
-                        video.muted = true;
-                        video.loop = true;
-                        video.setAttribute('playsinline', true);
-                        video.style.maxWidth = '100%';
-                        video.style.maxHeight = '100%';
-                        
-                        fileItem.appendChild(video);
-                        
-                        // 添加播放控制按钮到视频缩略图
-                        const playButton = document.createElement('div');
-                        playButton.className = 'video-play-button';
-                        playButton.innerHTML = '▶';
-                        fileItem.appendChild(playButton);
-                    } else {
-                        // 图片文件
-                        const img = document.createElement('img');
-                        img.src = fileData.dataUrl;
-                        img.alt = fileData.name;
-                        
-                        fileItem.appendChild(img);
+                try {
+                    // 1. 基础元素检查
+                    if (!imagesGrid) {
+                        console.error('渲染失败: imagesGrid元素未找到');
+                        return;
                     }
                     
-                    const overlay = document.createElement('div');
-                    overlay.className = 'image-overlay';
-                    overlay.textContent = `${fileData.name} (${fileData.size} KB)`;
+                    // 2. 清空网格内容
+                    imagesGrid.innerHTML = '';
                     
-                    fileItem.appendChild(overlay);
+                    // 3. 验证imagePool数组
+                    if (!Array.isArray(imagePool)) {
+                        console.error('渲染失败: imagePool不是有效数组', imagePool);
+                        showEmptyStateWithError('数据格式错误，请刷新页面重试');
+                        return;
+                    }
                     
-                    // 实现触摸和点击事件的统一处理，支持移动端和桌面端
-                    let pressTimer;
-                    let isLongPress = false;
+                    // 4. 处理空状态
+                    if (imagePool.length === 0) {
+                        showEmptyState();
+                        return;
+                    }
                     
-                    // 触摸开始 - 移动端
-                    fileItem.addEventListener('touchstart', function(e) {
+                    // 5. 预渲染优化 - 减少重排重绘
+                    const fragment = document.createDocumentFragment();
+                    let validFilesCount = 0;
+                    let invalidFilesCount = 0;
+                    
+                    // 6. 遍历文件池
+                    imagePool.forEach((fileData, index) => {
+                        try {
+                            // 7. 文件数据验证
+                            if (!fileData || typeof fileData !== 'object') {
+                                console.warn(`跳过无效文件数据 (索引: ${index})`);
+                                invalidFilesCount++;
+                                return;
+                            }
+                            
+                            // 8. 必要字段验证
+                            const id = fileData.id || `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                            const name = fileData.name || `未知文件_${index}`;
+                            const size = fileData.size || 0;
+                            const dataUrl = fileData.dataUrl;
+                            
+                            // 9. 检查dataUrl是否存在
+                            if (!dataUrl) {
+                                console.warn(`跳过无数据的文件: ${name}`);
+                                invalidFilesCount++;
+                                return;
+                            }
+                            
+                            // 10. 创建文件项容器
+                            const fileItem = document.createElement('div');
+                            fileItem.className = 'image-item';
+                            fileItem.setAttribute('data-id', id);
+                            
+                            // 11. 尝试从文件名推断类型（作为备用方案）
+                            function getFileType() {
+                                // 优先使用数据中的type字段
+                                if (fileData.type) {
+                                    return fileData.type;
+                                }
+                                
+                                // 从文件名后缀推断类型
+                                const extension = name.split('.').pop().toLowerCase();
+                                if (['mp4', 'webm', 'ogg', 'mov'].includes(extension)) {
+                                    return 'video/' + extension;
+                                } else if (extension === 'pdf') {
+                                    return 'application/pdf';
+                                } else {
+                                    // 默认假设为图片
+                                    return 'image/jpeg';
+                                }
+                            }
+                            
+                            const fileType = getFileType();
+                            
+                            // 12. 根据文件类型创建不同的预览元素
+                            if (fileType.startsWith('video/')) {
+                                // 视频文件
+                                createVideoPreview(fileItem, fileData, id, name, dataUrl);
+                            } else if (fileType === 'application/pdf') {
+                                // PDF文件
+                                createPdfPreview(fileItem, id, name);
+                            } else {
+                                // 图片文件
+                                createImagePreview(fileItem, fileData, id, name, dataUrl);
+                            }
+                            
+                            // 13. 添加文件信息覆盖层
+                            const overlay = document.createElement('div');
+                            overlay.className = 'image-overlay';
+                            // 格式化文件大小显示
+                            const formattedSize = size > 1024 ? `${(size / 1024).toFixed(1)} KB` : `${size} B`;
+                            overlay.textContent = `${name} (${formattedSize})`;
+                            fileItem.appendChild(overlay);
+                            
+                            // 14. 添加交互事件处理
+                            addFileItemInteractions(fileItem, fileData);
+                            
+                            // 15. 将文件项添加到文档片段
+                            fragment.appendChild(fileItem);
+                            validFilesCount++;
+                            
+                        } catch (fileError) {
+                            console.error(`处理文件时出错 (索引: ${index}):`, fileError);
+                            invalidFilesCount++;
+                            // 继续处理下一个文件
+                        }
+                    });
+                    
+                    // 16. 将文档片段一次性添加到DOM
+                    imagesGrid.appendChild(fragment);
+                    
+                    // 17. 提供渲染统计信息
+                    console.log(`文件池渲染完成: 成功 ${validFilesCount} 个, 失败 ${invalidFilesCount} 个`);
+                    
+                    // 18. 如果没有有效文件，显示空状态
+                    if (validFilesCount === 0 && invalidFilesCount > 0) {
+                        setTimeout(() => {
+                            showEmptyStateWithError('所有文件数据无效，请重新上传');
+                        }, 100);
+                    }
+                    
+                } catch (error) {
+                    console.error('渲染图片池时发生严重错误:', error);
+                    // 清空网格并显示错误状态
+                    imagesGrid.innerHTML = '';
+                    showEmptyStateWithError('渲染失败，请刷新页面重试');
+                }
+            }
+            
+            // 辅助函数：显示空状态
+            function showEmptyState() {
+                const emptyState = document.createElement('div');
+                emptyState.className = 'empty-state';
+                emptyState.innerHTML = '<p>暂无文件，请上传</p>';
+                imagesGrid.appendChild(emptyState);
+            }
+            
+            // 辅助函数：显示带错误信息的空状态
+            function showEmptyStateWithError(errorMessage) {
+                const errorState = document.createElement('div');
+                errorState.className = 'empty-state error-state';
+                errorState.innerHTML = `<p style="color: #dc3545;">${errorMessage}</p>`;
+                imagesGrid.appendChild(errorState);
+            }
+            
+            // 辅助函数：创建视频预览
+            function createVideoPreview(fileItem, fileData, id, name, dataUrl) {
+                try {
+                    const video = document.createElement('video');
+                    video.src = dataUrl;
+                    video.alt = name;
+                    video.setAttribute('data-id', id); // 添加唯一ID
+                    video.controls = false; // 缩略图不显示控制栏
+                    video.muted = true;
+                    video.loop = true;
+                    video.setAttribute('playsinline', true);
+                    video.style.maxWidth = '100%';
+                    video.style.maxHeight = '100%';
+                    
+                    // 添加视频加载错误处理
+                    video.onerror = function() {
+                        console.warn(`视频加载失败: ${name}`);
+                        replaceWithErrorPreview(fileItem, name, '视频文件损坏或格式不支持');
+                    };
+                    
+                    fileItem.appendChild(video);
+                    
+                    // 添加播放控制按钮到视频缩略图
+                    const playButton = document.createElement('div');
+                    playButton.className = 'video-play-button';
+                    playButton.innerHTML = '▶';
+                    fileItem.appendChild(playButton);
+                    
+                } catch (error) {
+                    console.error(`创建视频预览失败: ${name}`, error);
+                    replaceWithErrorPreview(fileItem, name, '创建视频预览失败');
+                }
+            }
+            
+            // 辅助函数：创建PDF预览
+            function createPdfPreview(fileItem, id, name) {
+                try {
+                    const pdfPreview = document.createElement('div');
+                    pdfPreview.className = 'pdf-preview';
+                    pdfPreview.innerHTML = '<div class="pdf-icon">📄</div><div class="pdf-name">' + name + '</div>';
+                    pdfPreview.style.display = 'flex';
+                    pdfPreview.style.flexDirection = 'column';
+                    pdfPreview.style.alignItems = 'center';
+                    pdfPreview.style.justifyContent = 'center';
+                    pdfPreview.style.height = '100%';
+                    pdfPreview.style.width = '100%';
+                    pdfPreview.setAttribute('data-id', id); // 添加唯一ID
+                    
+                    fileItem.appendChild(pdfPreview);
+                    
+                } catch (error) {
+                    console.error(`创建PDF预览失败: ${name}`, error);
+                    replaceWithErrorPreview(fileItem, name, '创建PDF预览失败');
+                }
+            }
+            
+            // 辅助函数：创建图片预览
+            function createImagePreview(fileItem, fileData, id, name, dataUrl) {
+                try {
+                    const img = document.createElement('img');
+                    img.src = dataUrl;
+                    img.alt = name;
+                    img.setAttribute('data-id', id); // 添加唯一ID
+                    
+                    // 添加加载失败处理
+                    img.onerror = function() {
+                        console.warn(`图片加载失败: ${name}`);
+                        // 创建文本显示替代
+                        this.style.display = 'none';
+                        replaceWithErrorPreview(fileItem, name, '图片文件损坏或格式不支持');
+                    };
+                    
+                    fileItem.appendChild(img);
+                    
+                } catch (error) {
+                    console.error(`创建图片预览失败: ${name}`, error);
+                    replaceWithErrorPreview(fileItem, name, '创建图片预览失败');
+                }
+            }
+            
+            // 辅助函数：替换为错误预览
+            function replaceWithErrorPreview(fileItem, fileName, errorReason) {
+                const errorPreview = document.createElement('div');
+                errorPreview.className = 'error-preview';
+                errorPreview.innerHTML = `<div class="error-icon">⚠️</div><div class="error-text">${fileName}</div><div class="error-reason">${errorReason}</div>`;
+                errorPreview.style.display = 'flex';
+                errorPreview.style.flexDirection = 'column';
+                errorPreview.style.alignItems = 'center';
+                errorPreview.style.justifyContent = 'center';
+                errorPreview.style.height = '100%';
+                errorPreview.style.width = '100%';
+                errorPreview.style.backgroundColor = '#fff3cd';
+                errorPreview.style.color = '#856404';
+                errorPreview.style.fontSize = '0.7rem';
+                errorPreview.style.textAlign = 'center';
+                errorPreview.style.padding = '8px';
+                errorPreview.style.wordBreak = 'break-word';
+                fileItem.appendChild(errorPreview);
+            }
+            
+            // 辅助函数：添加文件项交互事件
+            function addFileItemInteractions(fileItem, fileData) {
+                // 实现触摸和点击事件的统一处理，支持移动端和桌面端
+                let pressTimer;
+                let isLongPress = false;
+                
+                // 触摸开始 - 移动端
+                fileItem.addEventListener('touchstart', function(e) {
+                    try {
                         // 阻止默认行为以防止滚动
                         e.preventDefault();
                         
@@ -1040,18 +1651,28 @@
                             // 长按删除
                             showDeleteConfirm(fileData);
                         }, 500); // 500ms为长按阈值
-                    });
-                    
-                    // 触摸移动 - 移动端
-                    fileItem.addEventListener('touchmove', function() {
+                    } catch (error) {
+                        console.error('触摸开始事件处理失败:', error);
+                        clearTimeout(pressTimer);
+                        fileItem.classList.remove('press-feedback');
+                    }
+                });
+                
+                // 触摸移动 - 移动端
+                fileItem.addEventListener('touchmove', function() {
+                    try {
                         // 如果用户移动了手指，取消长按计时器
                         clearTimeout(pressTimer);
                         // 移除长按视觉反馈
                         fileItem.classList.remove('press-feedback');
-                    });
-                    
-                    // 触摸结束 - 移动端
-                    fileItem.addEventListener('touchend', function() {
+                    } catch (error) {
+                        console.error('触摸移动事件处理失败:', error);
+                    }
+                });
+                
+                // 触摸结束 - 移动端
+                fileItem.addEventListener('touchend', function() {
+                    try {
                         clearTimeout(pressTimer);
                         
                         // 移除长按视觉反馈
@@ -1064,21 +1685,30 @@
                         
                         // 重置长按状态
                         isLongPress = false;
-                    });
-                    
-                    // 点击 - 桌面端
-                    fileItem.addEventListener('click', function() {
+                    } catch (error) {
+                        console.error('触摸结束事件处理失败:', error);
+                        isLongPress = false;
+                    }
+                });
+                
+                // 点击 - 桌面端
+                fileItem.addEventListener('click', function() {
+                    try {
                         openPreview(fileData);
-                    });
-                    
-                    // 右键菜单 - 桌面端 - 修复Windows下的右键删除问题
-                        fileItem.addEventListener('contextmenu', function(e) {
-                            e.preventDefault();
-                            // 显示右键菜单而不是直接删除
-                            showContextMenu(e, fileData);
-                        });
-                    
-                    imagesGrid.appendChild(fileItem);
+                    } catch (error) {
+                        console.error('点击事件处理失败:', error);
+                    }
+                });
+                
+                // 右键菜单 - 桌面端 - 修复Windows下的右键删除问题
+                fileItem.addEventListener('contextmenu', function(e) {
+                    try {
+                        e.preventDefault();
+                        // 显示右键菜单而不是直接删除
+                        showContextMenu(e, fileData);
+                    } catch (error) {
+                        console.error('右键菜单事件处理失败:', error);
+                    }
                 });
             }
             
@@ -1173,48 +1803,53 @@
                         // 先从本地数据池中移除，确保数据一致性
                         imagePool = imagePool.filter(img => img.id !== fileDataToDelete.id);
                         
-                        // 查找要删除的DOM元素
+                        // 查找要删除的DOM元素 - 使用基于ID的更可靠方式
                         if (imagesGrid) {
-                            const imageItems = imagesGrid.querySelectorAll('.image-item');
-                            let itemToRemove = null;
-                            
-                            imageItems.forEach(item => {
-                                // 使用一致的属性查找视频和图片元素
-                                if (item.querySelector('img[alt="' + fileDataToDelete.name + '"]') || 
-                                    item.querySelector('video[data-name="' + fileDataToDelete.name + '"]')) {
-                                    itemToRemove = item;
-                                }
-                            });
+                            // 直接使用data-id属性查找元素
+                            const itemToRemove = imagesGrid.querySelector(`.image-item[data-id="${fileDataToDelete.id}"]`);
                             
                             if (itemToRemove) {
                                 // 添加CSS动画 - 确保动画效果平滑
                                 itemToRemove.style.transition = 'all 0.3s ease-out';
                                 itemToRemove.style.opacity = '0';
                                 itemToRemove.style.transform = 'scale(0.8)';
+                                itemToRemove.style.height = '0';
+                                itemToRemove.style.margin = '0';
+                                itemToRemove.style.padding = '0';
+                                itemToRemove.style.overflow = 'hidden';
                                 
                                 // 等待动画完成后直接从DOM中移除，不再重新渲染
                                 setTimeout(() => {
                                     try {
                                         itemToRemove.remove();
+                                        console.log('元素已成功从DOM中移除');
                                     } catch (e) {
                                         console.warn('移除元素失败:', e);
                                     }
                                 }, 300);
+                            } else {
+                                console.warn('未找到要删除的DOM元素，可能已经被移除或渲染问题');
+                                // 强制重新渲染以确保数据和视图一致
+                                setTimeout(() => {
+                                    renderImagePool();
+                                }, 100);
                             }
                             
                             // 检查是否需要显示空状态 - 直接更新DOM而不是重新渲染
                             if (imagePool.length === 0) {
-                                imagesGrid.innerHTML = '';
-                                const emptyState = document.createElement('div');
-                                emptyState.className = 'empty-state';
-                                emptyState.innerHTML = '<p>暂无文件，请上传</p>';
-                                imagesGrid.appendChild(emptyState);
+                                setTimeout(() => {
+                                    imagesGrid.innerHTML = '';
+                                    const emptyState = document.createElement('div');
+                                    emptyState.className = 'empty-state';
+                                    emptyState.innerHTML = '<p>暂无文件，请上传</p>';
+                                    imagesGrid.appendChild(emptyState);
+                                }, 300); // 等待动画完成后再更新空状态
                             }
                         }
                         
                         // 检查AV是否定义，以支持本地运行
                         if (typeof AV !== 'undefined' && AV && typeof AV.Object !== 'undefined') {
-                            console.log(`准备从LeanCloud删除特定${fileDataToDelete.type && fileDataToDelete.type.startsWith('video/') ? '视频' : '图片'}...`);
+                            console.log(`准备从LeanCloud删除特定${fileDataToDelete.type && fileDataToDelete.type.startsWith('video/') ? '视频' : fileDataToDelete.type === 'application/pdf' ? 'PDF文件' : '图片'}...`);
                             
                             try {
                                 const ImagePool = AV.Object.extend('ImagePool');
@@ -1284,15 +1919,37 @@
             
             // 打开预览模态框
             function openPreview(fileData) {
-                if (modalInfo && previewModal && downloadBtn) {
+                // 参数验证
+                if (!fileData || !fileData.name || !fileData.dataUrl) {
+                    console.error('openPreview: 无效的文件数据');
+                    alert('无法预览文件：数据无效');
+                    return;
+                }
+                
+                // 确保DOM元素存在
+                if (!modalInfo || !previewModal || !downloadBtn) {
+                    console.error('openPreview: 缺少必要的DOM元素');
+                    return;
+                }
+                
+                try {
+                    // 临时暂停自动刷新，避免预览时被打断
+                    if (typeof pauseRefresh === 'function') {
+                        pauseRefresh(60000); // 暂停1分钟
+                    }
+                    
                     // 清空模态框内容
                     const modalContent = document.querySelector('.modal-content');
                     if (modalContent) {
                         // 移除旧的预览元素
-                        const oldPreviewElement = modalContent.querySelector('img.modal-image, video.modal-video');
-                        if (oldPreviewElement) {
-                            modalContent.removeChild(oldPreviewElement);
-                        }
+                        const oldElements = modalContent.querySelectorAll('img.modal-image, video.modal-video, embed.modal-pdf, .modal-pdf-loading, .pdf-info, .preview-error');
+                        oldElements.forEach(element => {
+                            try {
+                                modalContent.removeChild(element);
+                            } catch (removeError) {
+                                console.warn('移除旧元素时出错:', removeError);
+                            }
+                        });
                     }
                     
                     // 根据文件类型创建不同的预览元素
@@ -1305,10 +1962,96 @@
                         video.controls = true;
                         video.setAttribute('playsinline', true);
                         
+                        // 视频加载错误处理
+                        video.onerror = function() {
+                            console.error('视频加载失败');
+                            showPreviewError('无法加载视频文件，请尝试下载后查看');
+                        };
+                        
                         // 添加到模态框
                         if (modalContent) {
                             modalContent.insertBefore(video, modalInfo);
                         }
+                    } else if (fileData.type && fileData.type === 'application/pdf') {
+                        // PDF文件 - 现有处理逻辑保持不变
+                        // 创建加载指示器
+                        const loadingIndicator = document.createElement('div');
+                        loadingIndicator.className = 'modal-pdf-loading';
+                        loadingIndicator.textContent = '加载PDF文件中...';
+                        
+                        // 添加到模态框
+                        if (modalContent) {
+                            modalContent.insertBefore(loadingIndicator, modalInfo);
+                        }
+                        
+                        // 尝试创建PDF预览元素
+                        setTimeout(() => {
+                            try {
+                                // 创建PDF嵌入元素
+                                const embed = document.createElement('embed');
+                                embed.className = 'modal-pdf';
+                                embed.src = fileData.dataUrl;
+                                embed.type = 'application/pdf';
+                                embed.style.width = '100%';
+                                embed.style.height = '70vh';
+                                embed.style.borderRadius = '10px';
+                                embed.style.opacity = '0';
+                                
+                                // PDF加载完成事件
+                                embed.onload = function() {
+                                    // 移除加载指示器
+                                    if (loadingIndicator && loadingIndicator.parentNode === modalContent) {
+                                        modalContent.removeChild(loadingIndicator);
+                                    }
+                                    
+                                    // 淡入显示PDF
+                                    setTimeout(() => {
+                                        embed.style.opacity = '1';
+                                    }, 50);
+                                };
+                                
+                                // PDF加载错误处理
+                                embed.onerror = function() {
+                                    console.error('PDF加载失败');
+                                    
+                                    // 移除加载指示器
+                                    if (loadingIndicator && loadingIndicator.parentNode === modalContent) {
+                                        modalContent.removeChild(loadingIndicator);
+                                    }
+                                    
+                                    // 显示错误信息
+                                    const errorMessage = document.createElement('div');
+                                    errorMessage.className = 'pdf-info';
+                                    errorMessage.innerHTML = '<p>无法预览PDF文件</p><p>请点击下载按钮保存后查看</p>';
+                                    
+                                    if (modalContent) {
+                                        modalContent.insertBefore(errorMessage, modalInfo);
+                                    }
+                                };
+                                
+                                // 添加到模态框
+                                if (modalContent) {
+                                    modalContent.insertBefore(embed, modalInfo);
+                                }
+                                
+                            } catch (error) {
+                                console.error('创建PDF预览时出错:', error);
+                                
+                                // 移除加载指示器
+                                if (loadingIndicator && loadingIndicator.parentNode === modalContent) {
+                                    modalContent.removeChild(loadingIndicator);
+                                }
+                                
+                                // 显示错误信息
+                                const errorMessage = document.createElement('div');
+                                errorMessage.className = 'pdf-info';
+                                errorMessage.innerHTML = '<p>无法预览PDF文件</p><p>请点击下载按钮保存后查看</p>';
+                                
+                                if (modalContent) {
+                                    modalContent.insertBefore(errorMessage, modalInfo);
+                                }
+                            }
+                        }, 100);
                     } else {
                         // 图片文件
                         const img = document.createElement('img');
@@ -1316,12 +2059,19 @@
                         img.src = fileData.dataUrl;
                         img.alt = fileData.name;
                         
+                        // 图片加载错误处理
+                        img.onerror = function() {
+                            console.error('图片加载失败:', fileData.name);
+                            showPreviewError(`无法加载图片文件"${fileData.name}"，请尝试下载后查看`);
+                        };
+                        
                         // 添加到模态框
                         if (modalContent) {
                             modalContent.insertBefore(img, modalInfo);
                         }
                     }
                     
+                    // 显示文件信息
                     modalInfo.textContent = `${fileData.name} (${fileData.size} KB)`;
                     previewModal.classList.add('active');
                     
@@ -1329,32 +2079,112 @@
                     document.body.style.overflow = 'hidden';
                     
                     // 保存当前预览的文件数据，用于下载
-                    downloadBtn.dataset.imageData = JSON.stringify(fileData);
+                    try {
+                        downloadBtn.dataset.imageData = JSON.stringify(fileData);
+                    } catch (jsonError) {
+                        console.error('保存文件数据到下载按钮时出错:', jsonError);
+                        // 即使出错也继续，因为下载功能可能仍然可用
+                    }
+                    
+                } catch (error) {
+                    console.error('打开预览时出错:', error);
+                    alert('预览文件失败，请重试');
+                }
+            }
+            
+            // 显示预览错误信息
+            function showPreviewError(message) {
+                const modalContent = document.querySelector('.modal-content');
+                if (modalContent) {
+                    // 移除现有的预览元素
+                    const previewElements = modalContent.querySelectorAll('img.modal-image, video.modal-video, embed.modal-pdf');
+                    previewElements.forEach(element => {
+                        try {
+                            modalContent.removeChild(element);
+                        } catch (removeError) {
+                            console.warn('移除预览元素时出错:', removeError);
+                        }
+                    });
+                    
+                    // 创建错误信息元素
+                    const errorElement = document.createElement('div');
+                    errorElement.className = 'preview-error';
+                    errorElement.innerHTML = `<p>${message}</p>`;
+                    
+                    modalContent.insertBefore(errorElement, modalInfo);
                 }
             }
             
             // 下载文件
             function downloadImage(imageData) {
                 try {
+                    console.log(`开始下载文件: ${imageData.name}, 类型: ${imageData.type}`);
+                    
+                    // 验证数据
+                    if (!imageData || !imageData.dataUrl || !imageData.name) {
+                        throw new Error('无效的文件数据');
+                    }
+                    
                     // 创建下载链接
                     const link = document.createElement('a');
                     link.href = imageData.dataUrl;
-                    link.download = imageData.name;
+                    
+                    // 确保文件名正确，特别是PDF文件
+                    let fileName = imageData.name;
+                    
+                    // 如果是PDF文件但文件名没有.pdf扩展名，添加扩展名
+                    if (imageData.type && imageData.type === 'application/pdf' && !fileName.toLowerCase().endsWith('.pdf')) {
+                        fileName += '.pdf';
+                    }
+                    
+                    link.download = fileName;
                     
                     // 隐藏链接
                     link.style.display = 'none';
                     
                     // 添加到文档
                     document.body.appendChild(link);
-                    link.click();
+                    
+                    // 触发下载
+                    const clickResult = link.click();
+                    
+                    // 检查是否触发了点击事件 (某些浏览器可能返回undefined)
+                    if (clickResult === undefined) {
+                        console.log(`文件下载已触发: ${fileName}`);
+                    } else {
+                        console.log(`文件下载结果: ${clickResult}`);
+                    }
                     
                     // 下载后移除链接元素
-                    document.body.removeChild(link);
+                    // 使用setTimeout确保在下载开始后再移除
+                    setTimeout(() => {
+                        try {
+                            document.body.removeChild(link);
+                        } catch (removeError) {
+                            console.warn('移除下载链接时出错:', removeError);
+                            // 忽略错误，链接可能已经被自动移除
+                        }
+                    }, 100);
                     
-                    console.log(`成功下载图片: ${imageData.name}`);
+                    console.log(`成功下载文件: ${fileName}`);
                 } catch (error) {
-                    console.error('下载图片时出错:', error);
-                    alert('下载失败，请重试！');
+                    console.error('下载文件时出错:', error);
+                    
+                    // 根据不同类型的错误提供不同的提示
+                    let errorMessage = '下载失败，请重试！';
+                    
+                    if (error.message.includes('无效的文件数据')) {
+                        errorMessage = '文件数据无效，无法下载';
+                    } else if (error.message.includes('Network') || error.message.includes('网络')) {
+                        errorMessage = '网络错误，请检查您的网络连接后重试';
+                    }
+                    
+                    // 对PDF文件的特殊错误提示
+                    if (imageData && imageData.type && imageData.type === 'application/pdf') {
+                        errorMessage += '\n您可以尝试右键点击预览区域并选择"另存为"保存PDF文件';
+                    }
+                    
+                    alert(errorMessage);
                 }
             }
             
@@ -1401,7 +2231,11 @@
                     }
                 });
             }
-        }
+        }    
     </script>
+    <!-- 页脚 -->
+    <footer style="text-align: center; padding: 20px; margin-top: 40px; font-size: 14px; color: #666;">
+       <a href="https://017328.xyz/" style="text-decoration: none; color: #87ceeb;">PoweredByXrb</a>
+    </footer>
 </body>
 </html>
