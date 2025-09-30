@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图片上传展示</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            color: #333;
+        }
+        
+        .container {
+            width: 100%;
+            max-width: 800px;
+            background-color: rgba(255, 255, 255, 0.9);
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+            font-size: 2.5rem;
+        }
+        
+        .description {
+            color: #7f8c8d;
+            margin-bottom: 30px;
+            font-size: 1.1rem;
+        }
+        
+        .mobile-tips {
+            color: #95a5a6;
+            margin-bottom: 20px;
+            font-size: 0.9rem;
+        }
+        
+        .upload-area {
+            border: 3px dashed #3498db;
+            border-radius: 15px;
+            padding: 40px 20px;
+            margin-bottom: 30px;
+            transition: all 0.3s ease;
+            background-color: rgba(52, 152, 219, 0.05);
+            cursor: pointer;
+        }
+        
+        .upload-area:hover {
+            background-color: rgba(52, 152, 219, 0.1);
+            border-color: #2980b9;
+        }
+        
+        .upload-area.highlight {
+            background-color: rgba(52, 152, 219, 0.2);
+            border-color: #1abc9c;
+        }
+        
+        .upload-icon {
+            font-size: 60px;
+            color: #3498db;
+            margin-bottom: 15px;
+        }
+        
+        .upload-text {
+            font-size: 1.2rem;
+            margin-bottom: 15px;
+            color: #2c3e50;
+        }
+        
+        .button-group {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .btn {
+            padding: 12px 25px;
+            border: none;
+            border-radius: 50px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        
+        .btn-primary {
+            background-color: #3498db;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background-color: #2980b9;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(52, 152, 219, 0.4);
+        }
+        
+        .btn-secondary {
+            background-color: #e74c3c;
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background-color: #c0392b;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(231, 76, 60, 0.4);
+        }
+        
+        .btn-download {
+            background-color: #2ecc71;
+            color: white;
+            margin-top: 15px;
+        }
+        
+        .btn-download:hover {
+            background-color: #27ae60;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(46, 204, 113, 0.4);
+        }
+        
+        .images-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 15px;
+            margin: 30px 0;
+            justify-items: center;
+        }
+        
+        .image-item {
+            width: 100%;
+            height: 150px;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            cursor: pointer;
+            position: relative;
+            transition: all 0.3s ease;
+            -webkit-tap-highlight-color: transparent; /* 移除移动端点击高亮 */
+            touch-action: manipulation; /* 优化触摸响应 */
+        }
+        
+        /* 长按状态的视觉反馈 */
+        .image-item.press-feedback {
+            transform: scale(0.95);
+            background-color: rgba(231, 76, 60, 0.1);
+            border: 2px solid #e74c3c;
+        }
+        
+        .image-item:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+        }
+        
+        .image-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: all 0.3s ease;
+        }
+        
+        .image-item:hover img {
+            transform: scale(1.1);
+        }
+        
+        .image-overlay {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(0, 0, 0, 0.6);
+            color: white;
+            padding: 8px;
+            font-size: 0.8rem;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        
+        .image-item:hover .image-overlay {
+            opacity: 1;
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        .footer {
+            margin-top: 30px;
+            color: #ecf0f1;
+            text-align: center;
+            font-size: 0.9rem;
+        }
+        
+        /* 预览模态框 */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+        }
+        
+        .modal.active {
+            opacity: 1;
+            visibility: visible;
+        }
+        
+        .modal-content {
+            max-width: 90%;
+            max-height: 90%;
+            position: relative;
+        }
+        
+        .modal-image {
+            max-width: 100%;
+            max-height: 70vh;
+            border-radius: 10px;
+        }
+        
+        .modal-close {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: white;
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            font-size: 20px;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: all 0.3s ease;
+        }
+        
+        .modal-close:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+        
+        .modal-info {
+            color: white;
+            margin-top: 15px;
+            font-size: 0.9rem;
+        }
+        
+        @media (max-width: 600px) {
+            .container {
+                padding: 20px;
+            }
+            
+            h1 {
+                font-size: 2rem;
+            }
+            
+            .button-group {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .btn {
+                width: 100%;
+                max-width: 250px;
+            }
+            
+            .images-grid {
+                grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+                gap: 10px;
+            }
+            
+            .image-item {
+                height: 120px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>图片交换</h1>
+        <p class="description">队列结构的图片暂存站</p >
+        <p class="mobile-tips"></p >
+        
+        <div class="upload-area" id="uploadArea">
+            <div class="upload-icon">📁</div>
+            <p class="upload-text">拖放图片到此处或点击上传</p >
+            <p class="upload-text">支持 JPG, PNG, GIF 格式</p >
+            
+            <div class="button-group">
+                <button class="btn btn-primary" id="uploadBtn">
+                    <span>⭐</span> 选择图片
+                </button>
+                <button class="btn btn-secondary" id="cameraBtn">
+                    <span>📸</span> 拍照上传
+                </button>
+            </div>
+            
+            <input type="file" id="fileInput" class="hidden" accept="image/*">
+            <!-- 相机输入 - 添加multiple属性以支持一次拍摄多张（部分设备支持） -->
+            <input type="file" id="cameraInput" class="hidden" accept="image/*" capture="camera" multiple>
+        </div>
+        
+        <!-- 图片网格容器 -->
+        <div class="images-grid" id="imagesGrid"></div>
+    </div>
+    
+    <div class="footer">
+        <p> </p >
+    </div>
+
+    <!-- 预览模态框 -->
+    <div class="modal" id="previewModal">
+        <button class="modal-close" id="closeModal">&times;</button>
+        <div class="modal-content">
+            <img class="modal-image" id="modalImage" src="" alt="预览图片">
+            <p class="modal-info" id="modalInfo"></p >
+            <!-- 下载按钮 -->
+            <button class="btn btn-download" id="downloadBtn">
+                <span>⏬</span> 下载
+            </button>
+        </div>
+    </div>
+
+<script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const uploadArea = document.getElementById('uploadArea');
+            const fileInput = document.getElementById('fileInput');
+            const cameraInput = document.getElementById('cameraInput');
+            const uploadBtn = document.getElementById('uploadBtn');
+            const cameraBtn = document.getElementById('cameraBtn');
+            const imagesGrid = document.getElementById('imagesGrid');
+            const previewModal = document.getElementById('previewModal');
+            const modalImage = document.getElementById('modalImage');
+            const modalInfo = document.getElementById('modalInfo');
+            const closeModal = document.getElementById('closeModal');
+            const downloadBtn = document.getElementById('downloadBtn');
+            
+            // 最大图片数量
+            const MAX_IMAGES = 5;
+            
+            // 从localStorage加载图片池
+            let imagePool = JSON.parse(localStorage.getItem('imagePool')) || [];
+            
+            // 初始化页面
+            renderImagePool();
+            
+            // 点击上传区域触发文件选择
+            uploadArea.addEventListener('click', function(e) {
+                if (e.target !== uploadBtn && e.target !== cameraBtn) {
+                    fileInput.click();
+                }
+            });
+            
+            // 上传按钮点击事件
+            uploadBtn.addEventListener('click', function() {
+                fileInput.click();
+            });
+            
+            // 拍照按钮点击事件
+            cameraBtn.addEventListener('click', function() {
+                // 检查是否在移动设备上
+                const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+                
+                // 在桌面端显示提示
+                if (!isMobile) {
+                    alert('提示：在桌面端点击此按钮将打开文件选择器，您可以选择已有的照片或使用连接的摄像头拍照。在移动设备上，此按钮将直接调用相机。');
+                }
+                
+                // 点击相机输入
+                cameraInput.click();
+            });
+            
+            // 文件选择处理
+            fileInput.addEventListener('change', handleFileSelect);
+            cameraInput.addEventListener('change', handleFileSelect);
+            
+            // 拖放功能
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                uploadArea.addEventListener(eventName, preventDefaults, false);
+            });
+            
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            
+            ['dragenter', 'dragover'].forEach(eventName => {
+                uploadArea.addEventListener(eventName, highlight, false);
+            });
+            
+            ['dragleave', 'drop'].forEach(eventName => {
+                uploadArea.addEventListener(eventName, unhighlight, false);
+            });
+            
+            function highlight() {
+                uploadArea.classList.add('highlight');
+            }
+            
+            function unhighlight() {
+                uploadArea.classList.remove('highlight');
+            }
+            
+            uploadArea.addEventListener('drop', handleDrop, false);
+            
+            function handleDrop(e) {
+                const dt = e.dataTransfer;
+                const files = dt.files;
+                handleFiles(files);
+            }
+            
+            function handleFileSelect(e) {
+                const files = e.target.files;
+                
+                // 添加日志记录，区分普通文件选择和相机拍摄
+                const isCameraUpload = e.target.id === 'cameraInput';
+                console.log(`${isCameraUpload ? '相机拍摄' : '文件选择'}上传: 共${files.length}个文件`);
+                
+                handleFiles(files);
+            }
+            
+            function handleFiles(files) {
+                // 防御性编程：检查files参数
+                if (!files || files.length === 0) {
+                    console.log('没有文件被选择');
+                    return;
+                }
+                
+                const file = files[0];
+                
+                // 验证文件类型
+                if (!file.type || !file.type.match('image.*')) {
+                    alert('请选择图片文件！');
+                    return;
+                }
+                
+                const reader = new FileReader();
+                
+                reader.onload = function(e) {
+                    // 创建新图片数据对象
+                    const imageData = {
+                        id: Date.now(), // 使用时间戳作为唯一ID
+                        dataUrl: e.target.result,
+                        name: file.name,
+                        size: (file.size / 1024).toFixed(2),
+                        timestamp: Date.now() // 时间戳用于严格按上传顺序排序
+                    };
+                    
+                    // 详细的日志记录，便于调试
+                    console.log(`当前图片池大小: ${imagePool.length}, MAX_IMAGES: ${MAX_IMAGES}`);
+                    
+                    // 严格实现队列（FIFO - 先进先出）逻辑
+                    while (imagePool.length >= MAX_IMAGES) {
+                        // 使用while循环确保无论如何都不会超过最大数量
+                        const removedImage = imagePool.shift();
+                        console.log(`移除最早的图片: ${removedImage.name}, ID: ${removedImage.id}`);
+                    }
+                    
+                    // 添加新图片到队列末尾
+                    imagePool.push(imageData);
+                    console.log(`添加新图片: ${imageData.name}, ID: ${imageData.id}`);
+                    
+                    // 确保图片按上传时间严格排序（防止任何排序问题）
+                    imagePool.sort((a, b) => a.timestamp - b.timestamp);
+                    console.log(`排序后图片池大小: ${imagePool.length}`);
+                    
+                    // 保存到localStorage - 确保完全覆盖旧数据
+                    try {
+                        localStorage.removeItem('imagePool'); // 先清除
+                        localStorage.setItem('imagePool', JSON.stringify(imagePool)); // 再保存
+                        console.log('图片池已成功保存到localStorage');
+                    } catch (error) {
+                        console.error('保存到localStorage失败:', error);
+                        // 即使localStorage失败，也继续渲染
+                    }
+                    
+                    // 重新渲染图片池
+                    renderImagePool();
+                    
+                    // 重置文件输入
+                    fileInput.value = '';
+                    cameraInput.value = '';
+                };
+                
+                // 添加错误处理
+                reader.onerror = function(error) {
+                    console.error('文件读取失败:', error);
+                    alert('文件读取失败，请重试！');
+                };
+                
+                reader.readAsDataURL(file);
+            }
+            
+            // 渲染图片池
+            function renderImagePool() {
+                // 清空图片网格
+                imagesGrid.innerHTML = '';
+                
+                // 如果没有图片，显示提示
+                if (imagePool.length === 0) {
+                    const emptyMessage = document.createElement('p');
+                    emptyMessage.textContent = '暂无上传的图片';
+                    emptyMessage.style.color = '#7f8c8d';
+                    emptyMessage.style.gridColumn = '1 / -1';
+                    imagesGrid.appendChild(emptyMessage);
+                    return;
+                }
+                
+                // 确保图片按上传顺序排列
+                imagePool.sort((a, b) => a.timestamp - b.timestamp);
+                
+                // 渲染每张图片
+                imagePool.forEach(imageData => {
+                    const imageItem = document.createElement('div');
+                    imageItem.className = 'image-item';
+                    
+                    const img = document.createElement('img');
+                    img.src = imageData.dataUrl;
+                    img.alt = imageData.name;
+                    
+                    const overlay = document.createElement('div');
+                    overlay.className = 'image-overlay';
+                    overlay.textContent = `${imageData.name} (${imageData.size} KB)`;
+                    
+                    imageItem.appendChild(img);
+                    imageItem.appendChild(overlay);
+                    
+                    // 实现触摸和点击事件的统一处理，支持移动端和桌面端
+                    let pressTimer;
+                    let isLongPress = false;
+                    
+                    // 触摸开始 - 移动端
+                    imageItem.addEventListener('touchstart', function(e) {
+                        // 阻止默认行为以防止滚动
+                        e.preventDefault();
+                        
+                        // 添加长按视觉反馈
+                        imageItem.classList.add('press-feedback');
+                        
+                        // 开始计时
+                        pressTimer = setTimeout(() => {
+                            isLongPress = true;
+                            // 长按删除
+                            showDeleteConfirm(imageData);
+                        }, 500); // 500ms为长按阈值
+                    });
+                    
+                    // 触摸移动 - 移动端
+                    imageItem.addEventListener('touchmove', function() {
+                        // 如果用户移动了手指，取消长按计时器
+                        clearTimeout(pressTimer);
+                        // 移除长按视觉反馈
+                        imageItem.classList.remove('press-feedback');
+                    });
+                    
+                    // 触摸结束 - 移动端
+                    imageItem.addEventListener('touchend', function() {
+                        clearTimeout(pressTimer);
+                        
+                        // 移除长按视觉反馈
+                        imageItem.classList.remove('press-feedback');
+                        
+                        // 如果不是长按，则执行预览
+                        if (!isLongPress) {
+                            openPreview(imageData);
+                        }
+                        
+                        // 重置长按标记
+                        isLongPress = false;
+                    });
+                    
+                    // 点击 - 桌面端
+                    imageItem.addEventListener('click', function() {
+                        openPreview(imageData);
+                    });
+                    
+                    // 右键菜单 - 桌面端
+                    imageItem.addEventListener('contextmenu', function(e) {
+                        e.preventDefault();
+                        showDeleteConfirm(imageData);
+                    });
+                    
+                    // 删除确认函数
+                    function showDeleteConfirm(imageDataToDelete) {
+                        if (confirm('确定要删除这张图片吗？')) {
+                            try {
+                                // 从图片池中移除
+                                imagePool = imagePool.filter(img => img.id !== imageDataToDelete.id);
+                                console.log(`删除图片: ${imageDataToDelete.name}, ID: ${imageDataToDelete.id}`);
+                                
+                                // 保存更新后的图片池
+                                localStorage.removeItem('imagePool'); // 先清除
+                                localStorage.setItem('imagePool', JSON.stringify(imagePool)); // 再保存
+                                console.log('删除后图片池已成功保存到localStorage');
+                                
+                                // 重新渲染
+                                renderImagePool();
+                            } catch (error) {
+                                console.error('删除图片时出错:', error);
+                                alert('删除失败，请重试！');
+                            }
+                        }
+                    };
+                    
+                    imagesGrid.appendChild(imageItem);
+                });
+            }
+            
+            // 打开预览模态框
+            function openPreview(imageData) {
+                modalImage.src = imageData.dataUrl;
+                modalInfo.textContent = `图片名称: ${imageData.name} | 大小: ${imageData.size} KB`;
+                previewModal.classList.add('active');
+                
+                // 防止背景滚动
+                document.body.style.overflow = 'hidden';
+                
+                // 添加下载事件监听器
+                downloadBtn.onclick = function() {
+                    downloadImage(imageData);
+                };
+            }
+            
+            // 下载图片函数
+            function downloadImage(imageData) {
+                try {
+                    // 创建一个临时的下载链接
+                    const link = document.createElement('a');
+                    
+                    // 设置链接的href为图片的data URL
+                    link.href = imageData.dataUrl;
+                    
+                    // 设置下载的文件名
+                    link.download = imageData.name;
+                    
+                    // 触发点击事件以开始下载
+                    document.body.appendChild(link);
+                    link.click();
+                    
+                    // 下载后移除链接元素
+                    document.body.removeChild(link);
+                    
+                    console.log(`成功下载图片: ${imageData.name}`);
+                } catch (error) {
+                    console.error('下载图片时出错:', error);
+                    alert('下载失败，请重试！');
+                }
+            }
+            
+            // 关闭预览模态框
+            function closePreview() {
+                previewModal.classList.remove('active');
+                
+                // 恢复背景滚动
+                document.body.style.overflow = '';
+            }
+            
+            // 点击关闭按钮
+            closeModal.addEventListener('click', closePreview);
+            
+            // 点击模态框背景关闭
+            previewModal.addEventListener('click', function(e) {
+                if (e.target === previewModal) {
+                    closePreview();
+                }
+            });
+            
+            // ESC键关闭模态框
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape' && previewModal.classList.contains('active')) {
+                    closePreview();
+                }
+            });
+        });
+    </script>
+</body>
+</html>
