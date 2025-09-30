@@ -249,11 +249,39 @@
             display: none;
         }
         
+        /* 图片网格容器 - 垂直滚动版本 */
         .images-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
             gap: 15px;
             margin-top: 30px;
+            overflow-y: hidden; /* 默认不显示滚动条 */
+            transition: overflow-y 0.3s ease;
+        }
+        
+        /* 当文件数量超过6个时显示滚动条 */
+        .images-grid.has-scrollbar {
+            max-height: 400px; /* 设置最大高度，超过这个高度会显示滚动条 */
+            overflow-y: auto;
+        }
+        
+        /* 自定义垂直滚动条样式 */
+        .images-grid::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        .images-grid::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+        }
+        
+        .images-grid::-webkit-scrollbar-thumb {
+            background: #3498db;
+            border-radius: 3px;
+        }
+        
+        .images-grid::-webkit-scrollbar-thumb:hover {
+            background: #2980b9;
         }
         
         .image-item {
@@ -728,10 +756,9 @@
                                     handleLeanCloudError(error);
                                 });
                         } else {
-                            console.log('没有新图片需要保存到LeanCloud');
-                            alert('上传成功！');
-                            isUploading = false;
-                        }
+                        console.log('没有新图片需要保存到LeanCloud');
+                        isUploading = false;
+                    }
                     } catch (error) {
                         handleLeanCloudError(error);
                     }
@@ -1402,6 +1429,7 @@
                     // 4. 处理空状态
                     if (imagePool.length === 0) {
                         showEmptyState();
+                        imagesGrid.classList.remove('has-scrollbar'); // 清空时移除滚动条类
                         return;
                     }
                     
@@ -1496,13 +1524,21 @@
                     // 16. 将文档片段一次性添加到DOM
                     imagesGrid.appendChild(fragment);
                     
-                    // 17. 提供渲染统计信息
+                    // 17. 根据文件数量控制滚动条显示
+                    if (validFilesCount > 6) {
+                        imagesGrid.classList.add('has-scrollbar');
+                    } else {
+                        imagesGrid.classList.remove('has-scrollbar');
+                    }
+                    
+                    // 18. 提供渲染统计信息
                     console.log(`文件池渲染完成: 成功 ${validFilesCount} 个, 失败 ${invalidFilesCount} 个`);
                     
-                    // 18. 如果没有有效文件，显示空状态
+                    // 19. 如果没有有效文件，显示空状态
                     if (validFilesCount === 0 && invalidFilesCount > 0) {
                         setTimeout(() => {
                             showEmptyStateWithError('所有文件数据无效，请重新上传');
+                            imagesGrid.classList.remove('has-scrollbar'); // 错误状态时移除滚动条类
                         }, 100);
                     }
                     
@@ -1511,6 +1547,7 @@
                     // 清空网格并显示错误状态
                     imagesGrid.innerHTML = '';
                     showEmptyStateWithError('渲染失败，请刷新页面重试');
+                    imagesGrid.classList.remove('has-scrollbar'); // 错误状态时移除滚动条类
                 }
             }
             
@@ -1635,12 +1672,17 @@
                 // 实现触摸和点击事件的统一处理，支持移动端和桌面端
                 let pressTimer;
                 let isLongPress = false;
+                let touchStartX, touchStartY;
+                const MOVE_THRESHOLD = 10; // 移动阈值，超过这个距离就认为是滚动而非点击
+                let hasMoved = false;
                 
                 // 触摸开始 - 移动端
                 fileItem.addEventListener('touchstart', function(e) {
                     try {
-                        // 阻止默认行为以防止滚动
-                        e.preventDefault();
+                        // 记录触摸起始位置
+                        touchStartX = e.touches[0].clientX;
+                        touchStartY = e.touches[0].clientY;
+                        hasMoved = false;
                         
                         // 添加长按视觉反馈
                         fileItem.classList.add('press-feedback');
@@ -1659,12 +1701,20 @@
                 });
                 
                 // 触摸移动 - 移动端
-                fileItem.addEventListener('touchmove', function() {
+                fileItem.addEventListener('touchmove', function(e) {
                     try {
-                        // 如果用户移动了手指，取消长按计时器
-                        clearTimeout(pressTimer);
-                        // 移除长按视觉反馈
-                        fileItem.classList.remove('press-feedback');
+                        // 计算移动距离
+                        const touchX = e.touches[0].clientX;
+                        const touchY = e.touches[0].clientY;
+                        const diffX = Math.abs(touchX - touchStartX);
+                        const diffY = Math.abs(touchY - touchStartY);
+                        
+                        // 如果移动超过阈值，则认为是滚动，取消长按计时器
+                        if (diffX > MOVE_THRESHOLD || diffY > MOVE_THRESHOLD) {
+                            hasMoved = true;
+                            clearTimeout(pressTimer);
+                            fileItem.classList.remove('press-feedback');
+                        }
                     } catch (error) {
                         console.error('触摸移动事件处理失败:', error);
                     }
@@ -1678,16 +1728,18 @@
                         // 移除长按视觉反馈
                         fileItem.classList.remove('press-feedback');
                         
-                        // 如果不是长按，则执行预览
-                        if (!isLongPress) {
+                        // 如果不是长按且没有移动，则执行预览
+                        if (!isLongPress && !hasMoved) {
                             openPreview(fileData);
                         }
                         
-                        // 重置长按状态
+                        // 重置状态
                         isLongPress = false;
+                        hasMoved = false;
                     } catch (error) {
                         console.error('触摸结束事件处理失败:', error);
                         isLongPress = false;
+                        hasMoved = false;
                     }
                 });
                 
