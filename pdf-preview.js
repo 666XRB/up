@@ -244,9 +244,6 @@ class PDFPreviewer {
             this.canvasContainer.style.padding = '10px';
             this.canvasContainer.style.boxSizing = 'border-box';
             this.canvasContainer.style.backgroundColor = '#f5f5f5';
-            // 添加自定义滚动条样式，使其更明显区分内外滚动
-            this.canvasContainer.style.scrollbarWidth = 'thin';
-            this.canvasContainer.style.scrollbarColor = '#888 #eee';
             
             // 添加到模态框内容中
             if (this.modalContent && this.modalInfo) {
@@ -255,43 +252,9 @@ class PDFPreviewer {
             
             // 创建页面信息显示区域（简洁的页脚显示）
             this.createPageInfoDisplay();
-            
-            // 添加CSS样式到文档头，确保滚动条样式生效
-            this.addScrollbarStyles();
         } catch (error) {
             console.error('创建PDF容器时出错:', error);
             throw error;
-        }
-    }
-    
-    // 添加自定义滚动条样式
-    addScrollbarStyles() {
-        try {
-            // 检查是否已存在样式
-            if (!document.getElementById('pdf-scrollbar-styles')) {
-                const style = document.createElement('style');
-                style.id = 'pdf-scrollbar-styles';
-                style.textContent = `
-                    .pdf-container::-webkit-scrollbar {
-                        width: 8px;
-                        height: 8px;
-                    }
-                    .pdf-container::-webkit-scrollbar-track {
-                        background: #eee;
-                        border-radius: 4px;
-                    }
-                    .pdf-container::-webkit-scrollbar-thumb {
-                        background: #888;
-                        border-radius: 4px;
-                    }
-                    .pdf-container::-webkit-scrollbar-thumb:hover {
-                        background: #555;
-                    }
-                `;
-                document.head.appendChild(style);
-            }
-        } catch (error) {
-            console.warn('添加滚动条样式时出错:', error);
         }
     }
 
@@ -485,11 +448,6 @@ class PDFPreviewer {
     setupGestureSupport() {
         if (!this.canvasContainer) return;
         
-        // 局部缩放相关变量
-        this.isDragging = false;
-        this.lastX = 0;
-        this.lastY = 0;
-        
         let startX, startY, startScrollLeft, startScrollTop;
         let scaleGestureEnabled = false;
         let lastDistance = 0;
@@ -500,31 +458,10 @@ class PDFPreviewer {
             // 仅当按住Ctrl键时才缩放
             if (e.ctrlKey) {
                 e.preventDefault();
-                // 获取鼠标在容器中的位置
-                const rect = this.canvasContainer.getBoundingClientRect();
-                const mouseX = e.clientX - rect.left;
-                const mouseY = e.clientY - rect.top;
-                
-                // 计算缩放前的鼠标位置对应的文档位置
-                const docX = mouseX + this.canvasContainer.scrollLeft;
-                const docY = mouseY + this.canvasContainer.scrollTop;
-                
-                // 应用缩放
                 const delta = e.deltaY > 0 ? -0.1 : 0.1;
-                const newScale = Math.max(0.5, Math.min(5, this.scale + delta));
-                
+                const newScale = Math.max(0.5, Math.min(3, this.scale + delta));
                 if (newScale !== this.scale) {
-                    this.scale = newScale;
-                    // 重新渲染当前页面
-                    this.renderCurrentPageWithLocalZoom();
-                    
-                    // 调整滚动位置，使鼠标指向的点保持在原位
-                    setTimeout(() => {
-                        const newDocX = docX * (newScale / this.scale);
-                        const newDocY = docY * (newScale / this.scale);
-                        this.canvasContainer.scrollLeft = newDocX - mouseX;
-                        this.canvasContainer.scrollTop = newDocY - mouseY;
-                    }, 50);
+                    this.setScale(newScale);
                 }
             }
         }, { passive: false });
@@ -553,36 +490,13 @@ class PDFPreviewer {
                 const dy = e.touches[0].clientY - e.touches[1].clientY;
                 const distance = Math.sqrt(dx * dx + dy * dy);
                 
-                // 计算触摸中心点
-                const centerX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-                const centerY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-                const rect = this.canvasContainer.getBoundingClientRect();
-                const mouseX = centerX - rect.left;
-                const mouseY = centerY - rect.top;
-                
-                // 计算缩放前的中心点对应的文档位置
-                const docX = mouseX + this.canvasContainer.scrollLeft;
-                const docY = mouseY + this.canvasContainer.scrollTop;
-                
-                // 应用缩放
                 const scaleFactor = distance / lastDistance;
-                const newScale = Math.max(0.5, Math.min(5, lastScale * scaleFactor));
+                const newScale = Math.max(0.5, Math.min(3, lastScale * scaleFactor));
                 
                 if (Math.abs(newScale - this.scale) > 0.05) { // 只有当缩放变化足够大时才更新
-                    this.scale = newScale;
-                    // 重新渲染当前页面
-                    this.renderCurrentPageWithLocalZoom();
-                    
-                    // 调整滚动位置，使中心点保持在原位
-                    setTimeout(() => {
-                        const newDocX = docX * (newScale / this.scale);
-                        const newDocY = docY * (newScale / this.scale);
-                        this.canvasContainer.scrollLeft = newDocX - mouseX;
-                        this.canvasContainer.scrollTop = newDocY - mouseY;
-                        
-                        lastScale = newScale;
-                        lastDistance = distance;
-                    }, 50);
+                    this.setScale(newScale);
+                    lastScale = newScale;
+                    lastDistance = distance;
                 }
             } else if (e.touches.length === 1) {
                 const x = e.touches[0].clientX;
@@ -598,63 +512,6 @@ class PDFPreviewer {
         this.canvasContainer.addEventListener('touchend', () => {
             scaleGestureEnabled = false;
         }, { passive: true });
-        
-        // 添加鼠标拖动支持（用于放大后拖动查看）
-        this.canvasContainer.addEventListener('mousedown', (e) => {
-            if (this.scale > 1.1) { // 只有在放大状态下才允许拖动
-                this.isDragging = true;
-                this.lastX = e.clientX;
-                this.lastY = e.clientY;
-                // 改变鼠标样式
-                this.canvasContainer.style.cursor = 'grabbing';
-            }
-        }, { passive: true });
-        
-        document.addEventListener('mousemove', (e) => {
-            if (!this.isDragging) return;
-            
-            const dx = e.clientX - this.lastX;
-            const dy = e.clientY - this.lastY;
-            
-            this.canvasContainer.scrollLeft -= dx;
-            this.canvasContainer.scrollTop -= dy;
-            
-            this.lastX = e.clientX;
-            this.lastY = e.clientY;
-        }, { passive: true });
-        
-        document.addEventListener('mouseup', () => {
-            if (this.isDragging) {
-                this.isDragging = false;
-                this.canvasContainer.style.cursor = 'grab';
-            }
-        }, { passive: true });
-        
-        // 初始鼠标样式
-        this.canvasContainer.style.cursor = 'grab';
-    }
-    
-    // 渲染当前页面，支持局部缩放
-    renderCurrentPageWithLocalZoom() {
-        if (!this.pdfDoc || !this.canvasContainer) return;
-        
-        // 清空容器
-        while (this.canvasContainer.firstChild) {
-            this.canvasContainer.removeChild(this.canvasContainer.firstChild);
-        }
-        
-        // 重新渲染当前页
-        this.renderPage(this.currentPageNum);
-        
-        // 如果当前不是第一页，渲染上一页
-        if (this.currentPageNum > 1) {
-            this.renderPage(this.currentPageNum - 1);
-        }
-        
-        // 如果当前不是最后一页，渲染下一页
-        if (this.currentPageNum < this.pdfDoc.numPages) {
-            this.renderPage(this.currentPageNum + 1);
-        }
     }
 
     // 更新当前页码
@@ -696,12 +553,31 @@ class PDFPreviewer {
         }
     }
 
-    // 设置缩放比例（保持缩放中心）
+    // 设置缩放比例
     setScale(scale) {
         this.scale = scale;
         
-        // 使用新的局部缩放渲染方法
-        this.renderCurrentPageWithLocalZoom();
+        // 保存当前页码
+        const currentPage = this.currentPageNum;
+        
+        // 重新渲染当前页和附近的页面
+        this.renderedPages.clear();
+        
+        // 清空容器
+        if (this.canvasContainer) {
+            while (this.canvasContainer.firstChild) {
+                this.canvasContainer.removeChild(this.canvasContainer.firstChild);
+            }
+        }
+        
+        // 重新渲染当前页和前后各一页
+        this.renderPage(currentPage);
+        if (this.pdfDoc && currentPage > 1) {
+            this.renderPage(currentPage - 1);
+        }
+        if (this.pdfDoc && currentPage < this.pdfDoc.numPages) {
+            this.renderPage(currentPage + 1);
+        }
     }
 
     // 检测设备类型并设置合适的缩放比例
