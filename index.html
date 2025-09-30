@@ -4,35 +4,128 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>图片交换 - 跨设备共享</title>
-    <!-- Firebase SDK -->
-    <script type="module">
-       // Import the functions you need from the SDKs you need
-       import { initializeApp } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-app.js";
-       import { getDatabase, ref, orderByChild, onValue, set } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-database.js";
-       import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-analytics.js";
-       
-       // Your web app's Firebase configuration
-       // For Firebase JS SDK v7.20.0 and later, measurementId is optional
-       window.firebaseConfig = {
-         apiKey: "AIzaSyDH_EL-jcvUHzTdhXZxeASmSI3A6mQgZC8",
-         authDomain: "jiaohuan-34535.firebaseapp.com",
-         databaseURL: "https://jiaohuan-34535-default-rtdb.firebaseio.com",
-         projectId: "jiaohuan-34535",
-         storageBucket: "jiaohuan-34535.firebasestorage.app",
-         messagingSenderId: "453922265015",
-         appId: "1:453922265015:web:c0769f07325b4819023a32",
-         measurementId: "G-TV8F5D6JLM"
-       };
-       
-       // Initialize Firebase
-       window.app = initializeApp(window.firebaseConfig);
-       window.database = getDatabase(window.app);
-       window.analytics = getAnalytics(window.app);
-       window.ref = ref;
-       window.orderByChild = orderByChild;
-       window.onValue = onValue;
-       window.set = set;
-     </script>
+    <!-- LeanCloud SDK (本地版本) -->
+    <script src="leancloud-javascript-sdk-6f78e1c/dist/av-min.js"></script>
+    <script>
+        // 添加SDK加载检测
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM 内容加载完成，准备初始化应用');
+            
+            // 检查 LeanCloud SDK 是否加载成功
+            console.log('检查 AV 对象是否存在:', typeof AV !== 'undefined' && AV);
+            if (typeof AV !== 'undefined' && AV) {
+                console.log('LeanCloud SDK 加载成功，版本信息:', AV.version || '未知版本');
+            } else {
+                console.error('LeanCloud SDK 加载失败，请检查网络连接或本地文件路径');
+            }
+            
+            // 添加全局函数，用于测试LeanCloud连接
+            window.testLeanCloudConnection = function() {
+                if (typeof AV !== 'undefined' && AV) {
+                    console.log('开始测试LeanCloud连接...');
+                    
+                    // 创建一个简单的测试对象
+                    const TestObject = AV.Object.extend('TestObject');
+                    const testObject = new TestObject();
+                    
+                    // 保存测试对象以验证连接
+                    testObject.save({
+                        words: 'Hello World'
+                    }).then(function(object) {
+                        console.log('LeanCloud连接测试成功！对象ID:', object.id);
+                        alert('LeanCloud连接测试成功！\n对象ID: ' + object.id);
+                        
+                        // 可选：删除测试对象
+                        object.destroy().then(function() {
+                            console.log('测试对象已删除');
+                        });
+                    }).catch(function(error) {
+                        console.error('LeanCloud连接测试失败:', error);
+                        alert('LeanCloud连接测试失败: ' + (error.message || '未知错误'));
+                    });
+                } else {
+                    alert('LeanCloud SDK未加载，请检查SDK路径！');
+                }
+            };
+            
+            // 无论LeanCloud是否可用，都初始化应用
+            try {
+                // 初始化 LeanCloud
+                if (typeof AV !== 'undefined' && AV) {
+                    const APP_ID = 'JNsmNzUOTsx5KOCwQbYg0ZAG-gzGzoHsz'; // 用户提供的 App ID
+                    const APP_KEY = 'f5YhwML6ZUQk46JDqSpLr1Oo'; // 用户提供的 App Key
+                    const SERVER_URL = 'https://jnsmnzuo.lc-cn-n1-shared.com'; // 用户提供的 Server URL
+                    
+                    console.log('准备初始化 LeanCloud:', {
+                        appId: APP_ID.substring(0, 5) + '...',
+                        serverURL: SERVER_URL
+                    });
+                    
+                    try {
+                        AV.init({
+                            appId: APP_ID,
+                            appKey: APP_KEY,
+                            serverURL: SERVER_URL
+                        });
+                        
+                        console.log('LeanCloud 初始化成功！App ID:', APP_ID);
+                        console.log('Server URL:', SERVER_URL);
+                        
+                        // 创建全局引用
+                        window.AV = AV;
+                        
+                        // 检查必要的方法是否存在
+                        const requiredMethods = ['Object', 'Query', 'File'];
+                        const missingMethods = [];
+                        
+                        requiredMethods.forEach(method => {
+                            if (typeof AV[method] === 'undefined') {
+                                missingMethods.push(method);
+                            }
+                        });
+                        
+                        if (missingMethods.length > 0) {
+                            console.warn('LeanCloud缺少必要的方法:', missingMethods);
+                        }
+                        
+                        // 测试连接 - 修改为使用ImagePool类而不是_User类
+                        try {
+                            const ImagePool = AV.Object.extend('ImagePool');
+                            const testQuery = new AV.Query(ImagePool);
+                            testQuery.limit(1);
+                            testQuery.find().then(() => {
+                                console.log('LeanCloud 连接测试成功！');
+                            }).catch(testError => {
+                                console.error('LeanCloud 连接测试失败:', testError);
+                                console.log('将尝试以只读模式继续使用应用');
+                            });
+                        } catch (testError) {
+                            console.error('LeanCloud 连接测试异常:', testError);
+                        }
+                    } catch (initError) {
+                        console.error('LeanCloud 初始化失败:', initError);
+                        alert('LeanCloud初始化失败: ' + (initError.message || '未知错误'));
+                    }
+                } else {
+                    console.log('LeanCloud SDK 加载失败，将使用本地模式运行');
+                    // 显示警告，但继续初始化应用
+                    console.warn('警告：使用本地模式，上传的图片不会保存到LeanCloud');
+                }
+                
+                // 初始化应用
+                initApp();
+            } catch (error) {
+                console.error('应用初始化过程中发生错误:', error);
+                // 即使出错，也尝试初始化应用，以便使用本地功能
+                try {
+                    initApp();
+                } catch (innerError) {
+                    console.error('应用核心功能初始化失败:', innerError);
+                    alert('应用加载失败，请刷新页面重试！\n错误: ' + (innerError.message || '未知错误'));
+                }
+            }
+        });
+    </script>
     <style>
         * {
             margin: 0;
@@ -109,96 +202,68 @@
         
         .upload-text {
             font-size: 1.2rem;
-            margin-bottom: 15px;
             color: #2c3e50;
+            margin-bottom: 5px;
         }
         
         .button-group {
-            display: flex;
-            justify-content: center;
-            gap: 15px;
             margin-top: 20px;
         }
         
         .btn {
-            padding: 12px 25px;
-            border: none;
-            border-radius: 50px;
-            font-size: 1rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-        }
-        
-        .btn-primary {
             background-color: #3498db;
             color: white;
+            border: none;
+            border-radius: 25px;
+            padding: 12px 24px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin: 0 10px;
         }
         
-        .btn-primary:hover {
+        .btn:hover {
             background-color: #2980b9;
             transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(52, 152, 219, 0.4);
         }
         
         .btn-secondary {
-            background-color: #e74c3c;
-            color: white;
+            background-color: #95a5a6;
         }
         
         .btn-secondary:hover {
-            background-color: #c0392b;
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(231, 76, 60, 0.4);
+            background-color: #7f8c8d;
         }
         
         .btn-download {
             background-color: #2ecc71;
-            color: white;
             margin-top: 15px;
         }
         
         .btn-download:hover {
             background-color: #27ae60;
             transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(46, 204, 113, 0.4);
+        }
+        
+        .hidden {
+            display: none;
         }
         
         .images-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
             gap: 15px;
-            margin: 30px 0;
-            justify-items: center;
+            margin-top: 30px;
         }
         
         .image-item {
-            width: 100%;
-            height: 150px;
+            position: relative;
             border-radius: 10px;
             overflow: hidden;
             box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
             cursor: pointer;
-            position: relative;
-            transition: all 0.3s ease;
-            -webkit-tap-highlight-color: transparent; /* 移除移动端点击高亮 */
-            touch-action: manipulation; /* 优化触摸响应 */
-        }
-        
-        /* 长按状态的视觉反馈 */
-        .image-item.press-feedback {
-            transform: scale(0.95);
-            background-color: rgba(231, 76, 60, 0.1);
-            border: 2px solid #e74c3c;
-        }
-        
-        .image-item:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+            aspect-ratio: 1;
+            background-color: #f1f1f1;
         }
         
         .image-item img {
@@ -209,7 +274,7 @@
         }
         
         .image-item:hover img {
-            transform: scale(1.1);
+            transform: scale(1.05);
         }
         
         .image-overlay {
@@ -217,111 +282,92 @@
             bottom: 0;
             left: 0;
             right: 0;
-            background: rgba(0, 0, 0, 0.6);
+            background: linear-gradient(to top, rgba(0,0,0,0.8), transparent);
             color: white;
-            padding: 8px;
+            padding: 10px;
             font-size: 0.8rem;
             opacity: 0;
             transition: opacity 0.3s ease;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+            word-break: break-all;
         }
         
         .image-item:hover .image-overlay {
             opacity: 1;
         }
         
-        .hidden {
-            display: none;
+        .image-item.press-feedback {
+            background-color: rgba(231, 76, 60, 0.2);
+            transform: scale(0.95);
         }
         
-        .footer {
-            margin-top: 30px;
-            color: #ecf0f1;
-            text-align: center;
-            font-size: 0.9rem;
-        }
-        
-        /* 预览模态框 */
         .modal {
+            display: none;
             position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.8);
-            display: flex;
+            background-color: rgba(0, 0, 0, 0.9);
+            z-index: 1000;
             justify-content: center;
             align-items: center;
-            z-index: 1000;
-            opacity: 0;
-            visibility: hidden;
-            transition: all 0.3s ease;
         }
         
         .modal.active {
-            opacity: 1;
-            visibility: visible;
+            display: flex;
         }
         
         .modal-content {
+            text-align: center;
             max-width: 90%;
-            max-height: 90%;
-            position: relative;
+            max-height: 90vh;
+            overflow: auto;
         }
         
         .modal-image {
             max-width: 100%;
             max-height: 70vh;
+            object-fit: contain;
             border-radius: 10px;
-        }
-        
-        .modal-close {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            color: white;
-            background: rgba(255, 255, 255, 0.2);
-            border: none;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            font-size: 20px;
-            cursor: pointer;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            transition: all 0.3s ease;
-        }
-        
-        .modal-close:hover {
-            background: rgba(255, 255, 255, 0.3);
         }
         
         .modal-info {
             color: white;
             margin-top: 15px;
+            font-size: 1.1rem;
+        }
+        
+        .modal-close {
+            position: absolute;
+            top: 20px;
+            right: 30px;
+            color: white;
+            font-size: 40px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: none;
+            border: none;
+        }
+        
+        .modal-close:hover {
+            transform: rotate(90deg);
+        }
+        
+        .footer {
+            margin-top: 20px;
+            color: rgba(255, 255, 255, 0.8);
             font-size: 0.9rem;
         }
         
+        /* 响应式调整 */
         @media (max-width: 600px) {
-            .container {
-                padding: 20px;
-            }
-            
             h1 {
                 font-size: 2rem;
             }
             
-            .button-group {
-                flex-direction: column;
-                align-items: center;
-            }
-            
-            .btn {
-                width: 100%;
-                max-width: 250px;
+            .container {
+                padding: 20px;
             }
             
             .images-grid {
@@ -329,8 +375,11 @@
                 gap: 10px;
             }
             
-            .image-item {
-                height: 120px;
+            .btn {
+                display: block;
+                margin: 10px auto;
+                width: 100%;
+                max-width: 200px;
             }
         }
     </style>
@@ -338,7 +387,7 @@
 <body>
     <div class="container">
         <h1>图片交换</h1>
-        <p class="description">队列结构的图片暂存站</p >
+        <p class="description">简单快速地在不同设备间共享图片</p >
         <p class="mobile-tips"></p >
         
         <div class="upload-area" id="uploadArea">
@@ -381,414 +430,921 @@
         </div>
     </div>
 
-<script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const uploadArea = document.getElementById('uploadArea');
-            const fileInput = document.getElementById('fileInput');
-            const cameraInput = document.getElementById('cameraInput');
-            const uploadBtn = document.getElementById('uploadBtn');
-            const cameraBtn = document.getElementById('cameraBtn');
-            const imagesGrid = document.getElementById('imagesGrid');
-            const previewModal = document.getElementById('previewModal');
-            const modalImage = document.getElementById('modalImage');
-            const modalInfo = document.getElementById('modalInfo');
-            const closeModal = document.getElementById('closeModal');
-            const downloadBtn = document.getElementById('downloadBtn');
+    <script>
+        // 应用主函数，在LeanCloud初始化成功后调用
+            function initApp() {
+                console.log('应用初始化开始');
+                
+                // 获取DOM元素，并添加存在性检查
+                const uploadArea = document.getElementById('uploadArea');
+                const fileInput = document.getElementById('fileInput');
+                const cameraInput = document.getElementById('cameraInput');
+                const uploadBtn = document.getElementById('uploadBtn');
+                const cameraBtn = document.getElementById('cameraBtn');
+                // 注意：这些元素在HTML中可能不存在
+                const testConnectionBtn = document.getElementById('testConnectionBtn');
+                const connectionStatus = document.getElementById('connectionStatus');
+                const imagesGrid = document.getElementById('imagesGrid');
+                const previewModal = document.getElementById('previewModal');
+                const modalImage = document.getElementById('modalImage');
+                const modalInfo = document.getElementById('modalInfo');
+                const closeModal = document.getElementById('closeModal');
+                const downloadBtn = document.getElementById('downloadBtn');
             
             // 最大图片数量
             const MAX_IMAGES = 5;
             
-            // 使用全局Firebase实例和配置
-            const database = window.database;
-            const imagesRef = window.ref(window.database, 'images');
-            
             // 图片池变量
             let imagePool = [];
             
-            // 从Firebase加载图片池并设置实时监听器
-            window.onValue(window.orderByChild(imagesRef, 'timestamp'), (snapshot) => {
-                imagePool = snapshot.val() || [];
-                // 如果是对象形式，转换为数组
-                if (imagePool && !Array.isArray(imagePool)) {
-                    imagePool = Object.values(imagePool);
+            // 从LeanCloud加载图片池
+            function loadImagesFromLeanCloud() {
+                if (typeof AV === 'undefined') {
+                    console.error('AV对象未定义，无法加载图片！');
+                    return;
                 }
-                // 确保图片按上传时间排序
-                if (Array.isArray(imagePool)) {
+                
+                const ImagePool = AV.Object.extend('ImagePool');
+                const query = new AV.Query(ImagePool);
+                query.descending('createdAt'); // 按创建时间降序
+                query.limit(10); // 限制获取数量
+                
+                query.find().then(results => {
+                    imagePool = results.map(result => ({
+                        id: result.id,
+                        name: result.get('name'),
+                        dataUrl: result.get('dataUrl'),
+                        size: result.get('size'),
+                        timestamp: result.get('timestamp')
+                    }));
+                    
+                    // 确保图片按上传时间排序
                     imagePool.sort((a, b) => a.timestamp - b.timestamp);
-                } else {
-                    imagePool = [];
+                    
+                    renderImagePool();
+                    console.log('图片池已从LeanCloud更新');
+                }).catch(error => {
+                    console.error('从LeanCloud加载图片失败:', error);
+                    // 不显示alert，只在控制台记录错误，避免过度打扰用户
+                    console.log('提示：无法连接到LeanCloud，将使用本地模拟数据');
+                    
+                    // 使用本地模拟数据
+                    useLocalMockData();
+                });
+            }
+            
+            // 使用本地模拟数据（当LeanCloud不可用时）
+            function useLocalMockData() {
+                console.log('使用本地模拟数据');
+                
+                // 从localStorage获取数据
+                const savedData = localStorage.getItem('imagePoolMockData');
+                if (savedData) {
+                    try {
+                        imagePool = JSON.parse(savedData);
+                        renderImagePool();
+                        console.log('已加载本地保存的模拟数据');
+                    } catch (error) {
+                        console.error('解析本地数据失败:', error);
+                        imagePool = [];
+                    }
                 }
+            }
+            
+            // 尝试删除对象的函数，添加错误处理以确保即使删除失败也能继续
+            function attemptDeleteObjects(objects) {
+                return new Promise((resolve) => {
+                    if (!objects || objects.length === 0) {
+                        return resolve();
+                    }
+                    
+                    try {
+                        // 检查 AV.Object.destroyAll 方法是否存在
+                        if (typeof AV.Object.destroyAll === 'function') {
+                            console.log('尝试使用destroyAll删除现有数据，数量:', objects.length);
+                            AV.Object.destroyAll(objects)
+                                .then(() => {
+                                    console.log('删除成功');
+                                    resolve();
+                                })
+                                .catch(deleteError => {
+                                    console.error('删除失败:', deleteError);
+                                    console.log('继续执行保存操作，忽略删除错误');
+                                    resolve(); // 即使删除失败也继续
+                                });
+                        } else {
+                            // 如果 destroyAll 方法不存在，尝试逐个删除
+                            console.log('AV.Object.destroyAll 方法不可用，尝试逐个删除');
+                            const deletePromises = objects.map(obj => {
+                                return obj.destroy().catch(individualError => {
+                                    console.error('单个对象删除失败:', individualError);
+                                    // 单个对象删除失败不影响整体流程
+                                    return Promise.resolve();
+                                });
+                            });
+                            
+                            Promise.all(deletePromises)
+                                .then(() => {
+                                    console.log('批量删除操作完成');
+                                    resolve();
+                                })
+                                .catch(() => {
+                                    console.log('部分对象删除失败，但继续执行保存操作');
+                                    resolve(); // 即使有部分失败也继续
+                                });
+                        }
+                    } catch (error) {
+                        console.error('删除操作异常:', error);
+                        console.log('继续执行保存操作，忽略删除异常');
+                        resolve(); // 即使发生异常也继续
+                    }
+                });
+            }
+            
+            // 上传功能实现 - 移除队列限制，允许任意上传
+            function updateImagePoolWithNewImages(newImages) {
+                // 设置上传状态
+                isUploading = true;
+                
+                // 添加新图片到图片池，不再限制数量
+                imagePool = [...newImages, ...imagePool];
+                
+                // 重新渲染
                 renderImagePool();
-                console.log('图片池已从Firebase更新');
-            });
-            
-            // 初始化页面
-            renderImagePool();
-            
-            // 点击上传区域触发文件选择
-            uploadArea.addEventListener('click', function(e) {
-                if (e.target !== uploadBtn && e.target !== cameraBtn) {
-                    fileInput.click();
+                
+                // 检查AV是否定义，以支持本地运行
+                if (typeof AV !== 'undefined' && AV && typeof AV.Object !== 'undefined') {
+                    console.log('准备保存图片到LeanCloud...');
+                    try {
+                        // 保存更新后的图片池到LeanCloud数据库
+                        try {
+                            const ImagePool = AV.Object.extend('ImagePool');
+                            console.log('ImagePool 类创建成功');
+                            
+                            // 不再删除现有数据，而是直接保存当前图片池
+                            console.log('直接保存图片池数据，不删除现有数据...');
+                            
+                            // 创建一个新的Promise来保存数据
+                            return new Promise((resolve, reject) => {
+                                // 保存新图片池数据
+                                if (imagePool.length > 0) {
+                                    // 创建一个ACL，允许任何人读取和写入
+                                    const acl = new AV.ACL();
+                                    acl.setPublicReadAccess(true);
+                                    acl.setPublicWriteAccess(true);
+                                     
+                                    const imageObjects = imagePool.map(image => {
+                                        const imageObject = new ImagePool();
+                                        imageObject.set('name', image.name);
+                                        imageObject.set('dataUrl', image.dataUrl);
+                                        imageObject.set('size', image.size);
+                                        imageObject.set('timestamp', image.timestamp);
+                                         
+                                        // 为每个对象设置ACL
+                                        imageObject.setACL(acl);
+                                         
+                                        console.log('创建图片对象:', image.name);
+                                        return imageObject;
+                                    });
+                                     
+                                    // 检查 AV.Object.saveAll 方法是否存在
+                                    if (typeof AV.Object.saveAll === 'function') {
+                                        console.log('准备保存新图片数据，数量:', imageObjects.length);
+                                        AV.Object.saveAll(imageObjects)
+                                            .then(resolve)
+                                            .catch(reject);
+                                    } else {
+                                        // 如果 saveAll 方法不存在，尝试逐个保存
+                                        console.log('AV.Object.saveAll 方法不可用，尝试逐个保存');
+                                        const savePromises = imageObjects.map(obj => obj.save());
+                                        Promise.all(savePromises)
+                                            .then(resolve)
+                                            .catch(reject);
+                                    }
+                                } else {
+                                    resolve();
+                                }
+                            }).then(() => {
+                                console.log('图片池已成功保存到LeanCloud数据库！');
+                                alert('上传成功！图片已保存到LeanCloud');
+                                isUploading = false;
+                            }).catch(error => {
+                                console.error('保存到LeanCloud数据库失败:', error);
+                                console.error('错误详情:', JSON.stringify(error));
+                                // 提供更友好的错误信息，区分不同类型的错误
+                                let errorMessage = error.message || '未知错误';
+                                if (errorMessage.includes('Forbidden') || errorMessage.includes('ACL')) {
+                                    errorMessage = '权限错误：可能是LeanCloud安全规则限制。数据可能已部分保存，建议检查LeanCloud控制台设置。';
+                                } else if (errorMessage.includes('Network')) {
+                                    errorMessage = '网络错误：请检查您的网络连接后重试。';
+                                }
+                                alert('上传失败: ' + errorMessage + '\n请查看控制台获取详细信息');
+                                isUploading = false;
+                            });
+                        } catch (error) {
+                            console.error('LeanCloud操作初始化失败:', error);
+                            alert('上传初始化失败: ' + (error.message || '未知错误'));
+                            isUploading = false;
+                        }
+                    } catch (error) {
+                        console.error('LeanCloud操作过程中发生异常:', error);
+                        alert('上传过程中发生异常: ' + (error.message || '未知异常'));
+                        isUploading = false;
+                    }
+                } else {
+                    console.log('LeanCloud不可用，仅在本地更新图片池');
+                    // 保存到localStorage作为模拟数据
+                    try {
+                        localStorage.setItem('imagePoolMockData', JSON.stringify(imagePool));
+                    console.log('本地模拟数据已保存');
+                    alert('LeanCloud不可用，已保存到本地');
+                } catch (error) {
+                    console.error('保存本地模拟数据失败:', error);
+                    alert('保存本地数据失败');
+                } finally {
+                    // 无论成功或失败都重置上传状态
+                    isUploading = false;
                 }
-            });
+            }
+            }
+            
+            // 处理文件上传 - 移除上传数量限制，支持多格式文件
+            function handleFileUpload(files) {
+                // 防止重复上传
+                if (isUploading) {
+                    console.warn('已有上传任务正在进行中，请等待完成后再上传');
+                    return;
+                }
+                
+                // 支持的文件类型：图片和视频
+                const supportedFiles = Array.from(files).filter(file => 
+                    file.type.startsWith('image/') || file.type.startsWith('video/')
+                );
+                
+                if (supportedFiles.length === 0) {
+                    alert('请选择有效的图片或视频文件！');
+                    return;
+                }
+                
+                // 不再限制单次上传数量
+                const filesToProcess = supportedFiles;
+                
+                // 读取并处理图片文件
+                const newImages = [];
+                let processedCount = 0;
+                
+                filesToProcess.forEach(file => {
+                    const reader = new FileReader();
+                    
+                    reader.onload = function(event) {
+                        const dataUrl = event.target.result;
+                        
+                        // 根据文件类型进行不同处理
+                        if (file.type.startsWith('image/')) {
+                            // 压缩图片
+                            compressImage(dataUrl, file.type, 0.8, (compressedDataUrl) => {
+                                processFile(file, compressedDataUrl);
+                            });
+                        } else if (file.type.startsWith('video/')) {
+                            // 视频文件不需要压缩，直接处理
+                            processFile(file, dataUrl);
+                        }
+                    };
+                    
+                    reader.onerror = function() {
+                        console.error(`读取文件${file.name}失败`);
+                        processedCount++;
+                    };
+                    
+                    // 以Data URL形式读取文件
+                    reader.readAsDataURL(file);
+                });
+                
+                // 处理文件数据的辅助函数
+                function processFile(file, dataUrl) {
+                    // 计算文件大小（KB）
+                    const byteString = atob(dataUrl.split(',')[1]);
+                    const byteLength = byteString.length;
+                    const sizeInKB = (byteLength / 1024).toFixed(1);
+                    
+                    // 创建文件数据对象
+                    const fileData = {
+                        id: Date.now().toString() + Math.floor(Math.random() * 1000).toString(),
+                        name: file.name,
+                        dataUrl: dataUrl,
+                        size: sizeInKB,
+                        timestamp: Date.now(),
+                        type: file.type
+                    };
+                    
+                    newImages.push(fileData);
+                    processedCount++;
+                    
+                    // 当所有文件处理完成后更新图片池
+                    if (processedCount === filesToProcess.length) {
+                        updateImagePoolWithNewImages(newImages);
+                        console.log(`已成功上传${newImages.length}个文件`);
+                    }
+                }
+            }
+            
+            // 图片压缩函数
+            function compressImage(dataUrl, type, quality, callback) {
+                const img = new Image();
+                
+                img.onload = function() {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    
+                    // 设置最大尺寸（例如1024px）
+                    const maxSize = 1024;
+                    let width = img.width;
+                    let height = img.height;
+                    
+                    if (width > height && width > maxSize) {
+                        height *= maxSize / width;
+                        width = maxSize;
+                    } else if (height > maxSize) {
+                        width *= maxSize / height;
+                        height = maxSize;
+                    }
+                    
+                    canvas.width = width;
+                    canvas.height = height;
+                    
+                    // 在画布上绘制图片
+                    ctx.drawImage(img, 0, 0, width, height);
+                    
+                    // 转换为压缩后的Data URL
+                    const compressedDataUrl = canvas.toDataURL(type, quality);
+                    callback(compressedDataUrl);
+                };
+                
+                img.src = dataUrl;
+            }
             
             // 上传按钮点击事件
-            uploadBtn.addEventListener('click', function() {
-                fileInput.click();
-            });
+            if (uploadBtn && fileInput) {
+                uploadBtn.addEventListener('click', function() {
+                    fileInput.click();
+                });
+            }
             
-            // 拍照按钮点击事件
-            cameraBtn.addEventListener('click', function() {
-                // 检查是否在移动设备上
-                const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-                
-                // 在桌面端显示提示
-                if (!isMobile) {
-                    alert('提示：在桌面端点击此按钮将打开文件选择器，您可以选择已有的照片或使用连接的摄像头拍照。在移动设备上，此按钮将直接调用相机。');
+            // 相机按钮点击事件
+                if (cameraBtn && cameraInput) {
+                    cameraBtn.addEventListener('click', function() {
+                        cameraInput.click();
+                    });
                 }
                 
-                // 点击相机输入
-                cameraInput.click();
-            });
+                // 测试连接按钮点击事件
+                if (testConnectionBtn) {
+                    testConnectionBtn.addEventListener('click', function() {
+                        if (typeof window.testLeanCloudConnection === 'function') {
+                            window.testLeanCloudConnection();
+                        } else {
+                            console.warn('testLeanCloudConnection函数未定义');
+                            alert('连接测试功能不可用');
+                        }
+                    });
+                }
+                
+                // 显示初始连接状态
+                if (connectionStatus) {
+                    if (typeof AV !== 'undefined' && AV) {
+                        connectionStatus.textContent = 'LeanCloud SDK已加载';
+                        connectionStatus.style.color = '#3498db';
+                    } else {
+                        connectionStatus.textContent = 'LeanCloud SDK未加载，使用本地模式';
+                        connectionStatus.style.color = '#e74c3c';
+                    }
+                }
             
-            // 文件选择处理
-            fileInput.addEventListener('change', handleFileSelect);
-            cameraInput.addEventListener('change', handleFileSelect);
+            // 拖放区域点击事件 - 只在左键点击时触发
+            if (uploadArea && fileInput) {
+                uploadArea.addEventListener('click', function(e) {
+                    // 只有左键点击时才触发文件选择
+                    if (e.button === 0 && !e.target.closest('button')) {
+                        fileInput.click();
+                    }
+                });
+            }
             
-            // 拖放功能
-            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-                uploadArea.addEventListener(eventName, preventDefaults, false);
-            });
+            // 阻止上传区域的右键菜单
+            if (uploadArea) {
+                uploadArea.addEventListener('contextmenu', function(e) {
+                    e.preventDefault();
+                });
+            }
+            
+            // 文件选择变化事件
+            if (fileInput) {
+                fileInput.addEventListener('change', function() {
+                    if (this.files && this.files.length > 0) {
+                        handleFileUpload(this.files);
+                        // 重置input以允许重复选择同一文件
+                        this.value = '';
+                    }
+                });
+            }
+            
+            // 相机拍照变化事件
+            if (cameraInput) {
+                cameraInput.addEventListener('change', function() {
+                    if (this.files && this.files.length > 0) {
+                        handleFileUpload(this.files);
+                        // 重置input以允许重复拍摄
+                        this.value = '';
+                    }
+                });
+            }
+            
+            // 设置拖放功能
+            if (uploadArea) {
+                ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                    uploadArea.addEventListener(eventName, preventDefaults, false);
+                });
+            }
             
             function preventDefaults(e) {
                 e.preventDefault();
                 e.stopPropagation();
             }
             
-            ['dragenter', 'dragover'].forEach(eventName => {
-                uploadArea.addEventListener(eventName, highlight, false);
-            });
-            
-            ['dragleave', 'drop'].forEach(eventName => {
-                uploadArea.addEventListener(eventName, unhighlight, false);
-            });
+            // 添加拖放视觉反馈
+            if (uploadArea) {
+                ['dragenter', 'dragover'].forEach(eventName => {
+                    uploadArea.addEventListener(eventName, highlight, false);
+                });
+                
+                ['dragleave', 'drop'].forEach(eventName => {
+                    uploadArea.addEventListener(eventName, unhighlight, false);
+                });
+            }
             
             function highlight() {
-                uploadArea.classList.add('highlight');
+                if (uploadArea) {
+                    uploadArea.classList.add('highlight');
+                }
             }
             
             function unhighlight() {
-                uploadArea.classList.remove('highlight');
-            }
-            
-            uploadArea.addEventListener('drop', handleDrop, false);
-            
-            function handleDrop(e) {
-                const dt = e.dataTransfer;
-                const files = dt.files;
-                handleFiles(files);
-            }
-            
-            function handleFileSelect(e) {
-                const files = e.target.files;
-                
-                // 添加日志记录，区分普通文件选择和相机拍摄
-                const isCameraUpload = e.target.id === 'cameraInput';
-                console.log(`${isCameraUpload ? '相机拍摄' : '文件选择'}上传: 共${files.length}个文件`);
-                
-                handleFiles(files);
-            }
-            
-            function handleFiles(files) {
-                // 防御性编程：检查files参数
-                if (!files || files.length === 0) {
-                    console.log('没有文件被选择');
-                    return;
+                if (uploadArea) {
+                    uploadArea.classList.remove('highlight');
                 }
-                
-                console.log(`开始处理${files.length}个文件`);
-                
-                // 存储需要处理的有效图片文件
-                const validImages = [];
-                
-                // 验证所有文件类型
-                for (let i = 0; i < files.length; i++) {
-                    const file = files[i];
-                    if (!file.type || !file.type.match('image.*')) {
-                        console.warn(`跳过非图片文件: ${file.name}`);
-                        continue;
+            }
+            
+            // 处理拖放文件
+            if (uploadArea) {
+                uploadArea.addEventListener('drop', function(e) {
+                    const dt = e.dataTransfer;
+                    const files = dt.files;
+                    
+                    if (files && files.length > 0) {
+                        handleFileUpload(files);
                     }
-                    validImages.push(file);
-                }
-                
-                if (validImages.length === 0) {
-                    alert('请选择有效的图片文件！');
-                    return;
-                }
-                
-                console.log(`成功筛选出${validImages.length}个有效图片文件`);
-                
-                // 处理所有有效图片
-                let processedCount = 0;
-                
-                // 为了保持队列逻辑，我们需要先准备好所有图片数据，然后一次性更新图片池
-                const newImages = [];
-                
-                validImages.forEach((file, index) => {
-                    const reader = new FileReader();
-                    
-                    reader.onload = function(e) {
-                        // 创建新图片数据对象
-                        const imageData = {
-                            id: Date.now() + index, // 使用时间戳+索引作为唯一ID
-                            dataUrl: e.target.result,
-                            name: file.name,
-                            size: (file.size / 1024).toFixed(2),
-                            timestamp: Date.now() + index // 时间戳+索引确保上传顺序
-                        };
-                        
-                        newImages.push(imageData);
-                        processedCount++;
-                        
-                        console.log(`已处理文件${processedCount}/${validImages.length}: ${file.name}`);
-                        
-                        // 当所有文件都处理完成后，一次性更新图片池
-                        if (processedCount === validImages.length) {
-                            updateImagePoolWithNewImages(newImages);
-                        }
-                    };
-                    
-                    // 添加错误处理
-                    reader.onerror = function(error) {
-                        console.error(`文件读取失败: ${file.name}`, error);
-                        processedCount++;
-                        
-                        // 即使有文件读取失败，也要继续处理其他文件
-                        if (processedCount === validImages.length && newImages.length > 0) {
-                            updateImagePoolWithNewImages(newImages);
-                        } else if (processedCount === validImages.length) {
-                            alert('所有文件读取失败，请重试！');
-                        }
-                    };
-                    
-                    reader.readAsDataURL(file);
                 });
             }
             
-            // 批量更新图片池函数
-            function updateImagePoolWithNewImages(newImages) {
-                console.log(`准备更新图片池，当前大小: ${imagePool.length}, 新增图片数量: ${newImages.length}`);
-                
-                // 严格实现队列（FIFO - 先进先出）逻辑
-                // 计算需要移除的旧图片数量
-                const totalImagesAfterAddition = imagePool.length + newImages.length;
-                const imagesToRemove = Math.max(0, totalImagesAfterAddition - MAX_IMAGES);
-                
-                if (imagesToRemove > 0) {
-                    console.log(`需要移除${imagesToRemove}个最早的图片`);
-                    // 移除最早的图片
-                    const removedImages = imagePool.splice(0, imagesToRemove);
-                    removedImages.forEach(img => {
-                        console.log(`移除最早的图片: ${img.name}, ID: ${img.id}`);
-                    });
+            // 初始化时加载图片池
+            loadImagesFromLeanCloud();
+            
+            // 设置定时刷新，每5秒尝试一次
+            setInterval(() => {
+                if (typeof AV !== 'undefined' && navigator.onLine) {
+                    loadImagesFromLeanCloud();
                 }
-                
-                // 添加所有新图片到队列末尾
-                newImages.forEach(imageData => {
-                    imagePool.push(imageData);
-                    console.log(`添加新图片: ${imageData.name}, ID: ${imageData.id}`);
-                });
-                
-                // 确保图片按上传时间严格排序
-                imagePool.sort((a, b) => a.timestamp - b.timestamp);
-                console.log(`排序后图片池大小: ${imagePool.length}`);
-                
-                // 保存到Firebase数据库
-                try {
-                    // 清空现有数据
-                    window.set(imagesRef, null);
-                    // 保存新图片池数据
-                    if (imagePool.length > 0) {
-                        // 将数组转换为对象，使用图片ID作为键
-                        const imagesObject = {};
-                        imagePool.forEach((image, index) => {
-                            // 使用index作为键，确保按顺序存储
-                            imagesObject[index] = image;
-                        });
-                        window.set(imagesRef, imagesObject);
+            }, 5000);
+            
+            // 全局变量，用于控制删除确认弹窗、右键菜单和上传状态
+            let deleteConfirmationActive = false;
+            let currentContextMenu = null;
+            let isUploading = false;
+            
+            // 添加CSS样式到head
+            function addStyles() {
+                const style = document.createElement('style');
+                style.textContent = `
+                    /* 视频预览样式 */
+                    .video-play-button {
+                        position: absolute;
+                        top: 50%;
+                        left: 50%;
+                        transform: translate(-50%, -50%);
+                        background-color: rgba(255, 255, 255, 0.8);
+                        border-radius: 50%;
+                        width: 40px;
+                        height: 40px;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        cursor: pointer;
+                        transition: all 0.3s ease;
+                        opacity: 0;
                     }
-                    console.log('图片池已成功保存到Firebase数据库');
-                } catch (error) {
-                    console.error('保存到Firebase数据库失败:', error);
-                    alert('同步失败，请检查网络连接并重试！');
-                }
-                
-                // 重新渲染图片池
-                renderImagePool();
-                
-                // 重置文件输入
-                fileInput.value = '';
-                cameraInput.value = '';
+                    
+                    .image-item:hover .video-play-button {
+                        opacity: 1;
+                    }
+                    
+                    .video-play-button:hover {
+                        background-color: rgba(255, 255, 255, 0.9);
+                        transform: translate(-50%, -50%) scale(1.1);
+                    }
+                    
+                    /* 视频播放器样式 */
+                    .modal-content video {
+                        max-width: 100%;
+                        max-height: 70vh;
+                        border-radius: 10px;
+                    }
+                `;
+                document.head.appendChild(style);
             }
             
-            // 渲染图片池
+            // 初始化时添加样式
+            addStyles();
+
+            // 渲染文件池
             function renderImagePool() {
-                // 清空图片网格
+                if (!imagesGrid) {
+                    console.error('imagesGrid元素未找到');
+                    return;
+                }
+                
                 imagesGrid.innerHTML = '';
                 
-                // 如果没有图片，显示提示
                 if (imagePool.length === 0) {
-                    const emptyMessage = document.createElement('p');
-                    emptyMessage.textContent = '暂无上传的图片';
-                    emptyMessage.style.color = '#7f8c8d';
-                    emptyMessage.style.gridColumn = '1 / -1';
-                    imagesGrid.appendChild(emptyMessage);
+                    const emptyState = document.createElement('div');
+                    emptyState.className = 'empty-state';
+                    emptyState.innerHTML = '<p>暂无文件，请上传</p>';
+                    imagesGrid.appendChild(emptyState);
                     return;
                 }
                 
-                // 确保图片按上传顺序排列
-                imagePool.sort((a, b) => a.timestamp - b.timestamp);
-                
-                // 渲染每张图片
-                imagePool.forEach(imageData => {
-                    const imageItem = document.createElement('div');
-                    imageItem.className = 'image-item';
+                imagePool.forEach(fileData => {
+                    const fileItem = document.createElement('div');
+                    fileItem.className = 'image-item';
                     
-                    const img = document.createElement('img');
-                    img.src = imageData.dataUrl;
-                    img.alt = imageData.name;
+                    // 根据文件类型创建不同的预览元素
+                    if (fileData.type && fileData.type.startsWith('video/')) {
+                        // 视频文件
+                        const video = document.createElement('video');
+                        video.src = fileData.dataUrl;
+                        video.alt = fileData.name;
+                        video.setAttribute('data-name', fileData.name); // 添加data-name属性，便于后续查找
+                        video.controls = false; // 缩略图不显示控制栏
+                        video.muted = true;
+                        video.loop = true;
+                        video.setAttribute('playsinline', true);
+                        video.style.maxWidth = '100%';
+                        video.style.maxHeight = '100%';
+                        
+                        fileItem.appendChild(video);
+                        
+                        // 添加播放控制按钮到视频缩略图
+                        const playButton = document.createElement('div');
+                        playButton.className = 'video-play-button';
+                        playButton.innerHTML = '▶';
+                        fileItem.appendChild(playButton);
+                    } else {
+                        // 图片文件
+                        const img = document.createElement('img');
+                        img.src = fileData.dataUrl;
+                        img.alt = fileData.name;
+                        
+                        fileItem.appendChild(img);
+                    }
                     
                     const overlay = document.createElement('div');
                     overlay.className = 'image-overlay';
-                    overlay.textContent = `${imageData.name} (${imageData.size} KB)`;
+                    overlay.textContent = `${fileData.name} (${fileData.size} KB)`;
                     
-                    imageItem.appendChild(img);
-                    imageItem.appendChild(overlay);
+                    fileItem.appendChild(overlay);
                     
                     // 实现触摸和点击事件的统一处理，支持移动端和桌面端
                     let pressTimer;
                     let isLongPress = false;
                     
                     // 触摸开始 - 移动端
-                    imageItem.addEventListener('touchstart', function(e) {
+                    fileItem.addEventListener('touchstart', function(e) {
                         // 阻止默认行为以防止滚动
                         e.preventDefault();
                         
                         // 添加长按视觉反馈
-                        imageItem.classList.add('press-feedback');
+                        fileItem.classList.add('press-feedback');
                         
                         // 开始计时
                         pressTimer = setTimeout(() => {
                             isLongPress = true;
                             // 长按删除
-                            showDeleteConfirm(imageData);
+                            showDeleteConfirm(fileData);
                         }, 500); // 500ms为长按阈值
                     });
                     
                     // 触摸移动 - 移动端
-                    imageItem.addEventListener('touchmove', function() {
+                    fileItem.addEventListener('touchmove', function() {
                         // 如果用户移动了手指，取消长按计时器
                         clearTimeout(pressTimer);
                         // 移除长按视觉反馈
-                        imageItem.classList.remove('press-feedback');
+                        fileItem.classList.remove('press-feedback');
                     });
                     
                     // 触摸结束 - 移动端
-                    imageItem.addEventListener('touchend', function() {
+                    fileItem.addEventListener('touchend', function() {
                         clearTimeout(pressTimer);
                         
                         // 移除长按视觉反馈
-                        imageItem.classList.remove('press-feedback');
+                        fileItem.classList.remove('press-feedback');
                         
                         // 如果不是长按，则执行预览
                         if (!isLongPress) {
-                            openPreview(imageData);
+                            openPreview(fileData);
                         }
                         
-                        // 重置长按标记
+                        // 重置长按状态
                         isLongPress = false;
                     });
                     
                     // 点击 - 桌面端
-                    imageItem.addEventListener('click', function() {
-                        openPreview(imageData);
+                    fileItem.addEventListener('click', function() {
+                        openPreview(fileData);
                     });
                     
-                    // 右键菜单 - 桌面端
-                    imageItem.addEventListener('contextmenu', function(e) {
-                        e.preventDefault();
-                        showDeleteConfirm(imageData);
-                    });
+                    // 右键菜单 - 桌面端 - 修复Windows下的右键删除问题
+                        fileItem.addEventListener('contextmenu', function(e) {
+                            e.preventDefault();
+                            // 显示右键菜单而不是直接删除
+                            showContextMenu(e, fileData);
+                        });
                     
-                    // 删除确认函数
-                    function showDeleteConfirm(imageDataToDelete) {
-                        if (confirm('确定要删除这张图片吗？')) {
-                            try {
-                                // 从图片池中移除
-                                imagePool = imagePool.filter(img => img.id !== imageDataToDelete.id);
-                                console.log(`删除图片: ${imageDataToDelete.name}, ID: ${imageDataToDelete.id}`);
-                                
-                                // 保存更新后的图片池到Firebase数据库
-                        try {
-                            // 清空现有数据
-                            window.set(imagesRef, null);
-                            // 保存新图片池数据
-                            if (imagePool.length > 0) {
-                                // 将数组转换为对象，使用图片ID作为键
-                                const imagesObject = {};
-                                imagePool.forEach((image, index) => {
-                                    // 使用index作为键，确保按顺序存储
-                                    imagesObject[index] = image;
-                                });
-                                window.set(imagesRef, imagesObject);
-                            }
-                            console.log('删除后图片池已成功保存到Firebase数据库');
-                        } catch (error) {
-                            console.error('保存到Firebase数据库失败:', error);
-                            alert('同步失败，请检查网络连接并重试！');
-                        }
-                                
-                                // 重新渲染
-                                renderImagePool();
-                            } catch (error) {
-                                console.error('删除图片时出错:', error);
-                                alert('删除失败，请重试！');
-                            }
-                        }
-                    };
-                    
-                    imagesGrid.appendChild(imageItem);
+                    imagesGrid.appendChild(fileItem);
                 });
             }
             
-            // 打开预览模态框
-            function openPreview(imageData) {
-                modalImage.src = imageData.dataUrl;
-                modalInfo.textContent = `图片名称: ${imageData.name} | 大小: ${imageData.size} KB`;
-                previewModal.classList.add('active');
+            // 显示右键菜单
+            function showContextMenu(event, fileData) {
+                // 移除已有右键菜单，确保同一时间只有一个菜单
+                if (currentContextMenu) {
+                    try {
+                        document.body.removeChild(currentContextMenu);
+                    } catch (e) {
+                        console.warn('移除已有右键菜单失败:', e);
+                    }
+                    currentContextMenu = null;
+                }
                 
-                // 防止背景滚动
-                document.body.style.overflow = 'hidden';
+                // 创建临时菜单
+                const menu = document.createElement('div');
+                menu.className = 'context-menu';
+                menu.style.position = 'fixed';
+                menu.style.left = event.clientX + 'px';
+                menu.style.top = event.clientY + 'px';
+                menu.style.backgroundColor = '#fff';
+                menu.style.border = '1px solid #ccc';
+                menu.style.borderRadius = '4px';
+                menu.style.padding = '4px 0';
+                menu.style.zIndex = '1000';
+                menu.style.boxShadow = '0 2px 8px rgba(0,0,0,0.15)';
+                menu.style.minWidth = '120px';
                 
-                // 添加下载事件监听器
-                downloadBtn.onclick = function() {
-                    downloadImage(imageData);
+                // 保存当前菜单引用
+                currentContextMenu = menu;
+                
+                // 添加预览选项
+                const previewOption = document.createElement('div');
+                previewOption.textContent = '预览';
+                previewOption.style.padding = '8px 16px';
+                previewOption.style.cursor = 'pointer';
+                previewOption.onmouseover = function() { this.style.backgroundColor = '#f5f5f5'; };
+                  previewOption.onmouseout = function() { this.style.backgroundColor = 'transparent'; };
+                  previewOption.onclick = function() {
+                      openPreview(fileData);
+                      document.body.removeChild(menu);
+                  };
+                menu.appendChild(previewOption);
+                
+                // 添加删除选项
+                const deleteOption = document.createElement('div');
+                deleteOption.textContent = '删除';
+                deleteOption.style.padding = '8px 16px';
+                deleteOption.style.cursor = 'pointer';
+                deleteOption.onmouseover = function() { this.style.backgroundColor = '#f5f5f5'; };
+                deleteOption.onmouseout = function() { this.style.backgroundColor = 'transparent'; };
+                deleteOption.onclick = function() {
+                    showDeleteConfirm(fileData);
+                    document.body.removeChild(menu);
                 };
+                menu.appendChild(deleteOption);
+                
+                // 添加到文档
+                document.body.appendChild(menu);
+                
+                // 点击其他地方关闭菜单
+                function closeMenu() {
+                    try {
+                        document.body.removeChild(menu);
+                    } catch (e) {
+                        console.warn('移除右键菜单失败:', e);
+                    }
+                    document.removeEventListener('click', closeMenu);
+                    currentContextMenu = null; // 重置当前菜单引用
+                }
+                setTimeout(() => {
+                    document.addEventListener('click', closeMenu);
+                }, 0);
             }
             
-            // 下载图片函数
+            // 删除确认函数 - 最终优化版，确保所有元素删除体验一致
+            function showDeleteConfirm(fileDataToDelete) {
+                // 防止多次触发删除确认
+                if (deleteConfirmationActive) {
+                    return;
+                }
+                
+                deleteConfirmationActive = true;
+                
+                if (confirm(`确定要删除${fileDataToDelete.type && fileDataToDelete.type.startsWith('video/') ? '视频' : '图片'}：${fileDataToDelete.name}吗？`)) {
+                    try {
+                        // 保存初始长度用于错误恢复
+                        const initialLength = imagePool.length;
+                        console.log(`删除${fileDataToDelete.type && fileDataToDelete.type.startsWith('video/') ? '视频' : '图片'}: ${fileDataToDelete.name}, ID: ${fileDataToDelete.id}`);
+                        
+                        // 先从本地数据池中移除，确保数据一致性
+                        imagePool = imagePool.filter(img => img.id !== fileDataToDelete.id);
+                        
+                        // 查找要删除的DOM元素
+                        if (imagesGrid) {
+                            const imageItems = imagesGrid.querySelectorAll('.image-item');
+                            let itemToRemove = null;
+                            
+                            imageItems.forEach(item => {
+                                // 使用一致的属性查找视频和图片元素
+                                if (item.querySelector('img[alt="' + fileDataToDelete.name + '"]') || 
+                                    item.querySelector('video[data-name="' + fileDataToDelete.name + '"]')) {
+                                    itemToRemove = item;
+                                }
+                            });
+                            
+                            if (itemToRemove) {
+                                // 添加CSS动画 - 确保动画效果平滑
+                                itemToRemove.style.transition = 'all 0.3s ease-out';
+                                itemToRemove.style.opacity = '0';
+                                itemToRemove.style.transform = 'scale(0.8)';
+                                
+                                // 等待动画完成后直接从DOM中移除，不再重新渲染
+                                setTimeout(() => {
+                                    try {
+                                        itemToRemove.remove();
+                                    } catch (e) {
+                                        console.warn('移除元素失败:', e);
+                                    }
+                                }, 300);
+                            }
+                            
+                            // 检查是否需要显示空状态 - 直接更新DOM而不是重新渲染
+                            if (imagePool.length === 0) {
+                                imagesGrid.innerHTML = '';
+                                const emptyState = document.createElement('div');
+                                emptyState.className = 'empty-state';
+                                emptyState.innerHTML = '<p>暂无文件，请上传</p>';
+                                imagesGrid.appendChild(emptyState);
+                            }
+                        }
+                        
+                        // 检查AV是否定义，以支持本地运行
+                        if (typeof AV !== 'undefined' && AV && typeof AV.Object !== 'undefined') {
+                            console.log(`准备从LeanCloud删除特定${fileDataToDelete.type && fileDataToDelete.type.startsWith('video/') ? '视频' : '图片'}...`);
+                            
+                            try {
+                                const ImagePool = AV.Object.extend('ImagePool');
+                                const query = new AV.Query(ImagePool);
+                                
+                                // 查找并删除指定ID的文件
+                                query.equalTo('name', fileDataToDelete.name);
+                                query.equalTo('timestamp', fileDataToDelete.timestamp);
+                                
+                                query.find().then(results => {
+                                    if (results.length > 0) {
+                                        // 只删除找到的匹配项
+                                        return attemptDeleteObjects(results);
+                                    } else {
+                                        console.log('未在LeanCloud中找到匹配的图片，可能已被删除');
+                                        return Promise.resolve();
+                                    }
+                                }).then(() => {
+                                    console.log('图片已成功从LeanCloud删除！');
+                                }).catch(error => {
+                                    console.error('从LeanCloud删除图片失败:', error);
+                                    console.error('错误详情:', JSON.stringify(error));
+                                    
+                                    // 提供更友好的错误信息
+                                    let errorMessage = error.message || '未知错误';
+                                    if (errorMessage.includes('Forbidden') || errorMessage.includes('ACL')) {
+                                        errorMessage = '权限错误：可能是LeanCloud安全规则限制。';
+                                    } else if (errorMessage.includes('Network')) {
+                                        errorMessage = '网络错误：请检查您的网络连接后重试。';
+                                    }
+                                    
+                                    // 如果删除失败，恢复本地数据以保持一致性
+                                    console.warn('删除失败，恢复本地数据以保持一致性');
+                                    if (imagePool.length === initialLength - 1) {
+                                        // 只有当文件确实被移除了才恢复
+                                        imagePool.push(fileDataToDelete);
+                                        renderImagePool();
+                                    }
+                                }).finally(() => {
+                                    // 确保无论如何都会重置删除确认状态
+                                    deleteConfirmationActive = false;
+                                });
+                            } catch (error) {
+                                console.error('LeanCloud操作过程中发生异常:', error);
+                            }
+                        } else {
+                            console.log('LeanCloud不可用，仅在本地更新图片池');
+                            // 保存到localStorage作为模拟数据
+                            try {
+                                localStorage.setItem('imagePoolMockData', JSON.stringify(imagePool));
+                                console.log('本地模拟数据已更新');
+                            } catch (error) {
+                                console.error('保存本地模拟数据失败:', error);
+                            }
+                        }
+                    } catch (error) {
+                        console.error('删除或保存数据时出错:', error);
+                    } finally {
+                        // 确保无论如何都会重置删除确认状态
+                        deleteConfirmationActive = false;
+                    }
+                } else {
+                    // 用户取消删除也需要重置状态
+                    deleteConfirmationActive = false;
+                }
+            };
+            
+            // 打开预览模态框
+            function openPreview(fileData) {
+                if (modalInfo && previewModal && downloadBtn) {
+                    // 清空模态框内容
+                    const modalContent = document.querySelector('.modal-content');
+                    if (modalContent) {
+                        // 移除旧的预览元素
+                        const oldPreviewElement = modalContent.querySelector('img.modal-image, video.modal-video');
+                        if (oldPreviewElement) {
+                            modalContent.removeChild(oldPreviewElement);
+                        }
+                    }
+                    
+                    // 根据文件类型创建不同的预览元素
+                    if (fileData.type && fileData.type.startsWith('video/')) {
+                        // 视频文件
+                        const video = document.createElement('video');
+                        video.className = 'modal-video';
+                        video.src = fileData.dataUrl;
+                        video.alt = fileData.name;
+                        video.controls = true;
+                        video.setAttribute('playsinline', true);
+                        
+                        // 添加到模态框
+                        if (modalContent) {
+                            modalContent.insertBefore(video, modalInfo);
+                        }
+                    } else {
+                        // 图片文件
+                        const img = document.createElement('img');
+                        img.className = 'modal-image';
+                        img.src = fileData.dataUrl;
+                        img.alt = fileData.name;
+                        
+                        // 添加到模态框
+                        if (modalContent) {
+                            modalContent.insertBefore(img, modalInfo);
+                        }
+                    }
+                    
+                    modalInfo.textContent = `${fileData.name} (${fileData.size} KB)`;
+                    previewModal.classList.add('active');
+                    
+                    // 禁止背景滚动
+                    document.body.style.overflow = 'hidden';
+                    
+                    // 保存当前预览的文件数据，用于下载
+                    downloadBtn.dataset.imageData = JSON.stringify(fileData);
+                }
+            }
+            
+            // 下载文件
             function downloadImage(imageData) {
                 try {
-                    // 创建一个临时的下载链接
+                    // 创建下载链接
                     const link = document.createElement('a');
-                    
-                    // 设置链接的href为图片的data URL
                     link.href = imageData.dataUrl;
-                    
-                    // 设置下载的文件名
                     link.download = imageData.name;
                     
-                    // 触发点击事件以开始下载
+                    // 隐藏链接
+                    link.style.display = 'none';
+                    
+                    // 添加到文档
                     document.body.appendChild(link);
                     link.click();
                     
@@ -804,29 +1360,48 @@
             
             // 关闭预览模态框
             function closePreview() {
-                previewModal.classList.remove('active');
-                
-                // 恢复背景滚动
-                document.body.style.overflow = '';
+                if (previewModal) {
+                    previewModal.classList.remove('active');
+                    
+                    // 恢复背景滚动
+                    document.body.style.overflow = '';
+                }
             }
             
             // 点击关闭按钮
-            closeModal.addEventListener('click', closePreview);
+            if (closeModal) {
+                closeModal.addEventListener('click', closePreview);
+            }
             
             // 点击模态框背景关闭
-            previewModal.addEventListener('click', function(e) {
-                if (e.target === previewModal) {
-                    closePreview();
-                }
-            });
+            if (previewModal) {
+                previewModal.addEventListener('click', function(e) {
+                    if (e.target === previewModal) {
+                        closePreview();
+                    }
+                });
+            }
             
             // ESC键关闭模态框
             document.addEventListener('keydown', function(e) {
-                if (e.key === 'Escape' && previewModal.classList.contains('active')) {
+                if (e.key === 'Escape' && previewModal && previewModal.classList.contains('active')) {
                     closePreview();
                 }
             });
-        });
+            
+            // 下载按钮点击事件
+            if (downloadBtn) {
+                downloadBtn.addEventListener('click', function() {
+                    try {
+                        const imageData = JSON.parse(this.dataset.imageData);
+                        downloadImage(imageData);
+                    } catch (error) {
+                        console.error('解析图片数据失败:', error);
+                        alert('下载失败，请重试！');
+                    }
+                });
+            }
+        }
     </script>
 </body>
 </html>
