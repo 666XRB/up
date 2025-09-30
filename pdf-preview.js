@@ -30,7 +30,6 @@ class PDFPreviewer {
         this.loadingIndicator = loadingIndicator;
         this.pdfjsLib = null;
         this.canvasContainer = null;
-        this.navContainer = null;
         this.currentPageNum = 1;
         this.pdfDoc = null;
         this.scale = 1;
@@ -38,6 +37,9 @@ class PDFPreviewer {
         this.renderedPages = new Set(); // 已渲染的页面集合
         this.isLoading = false; // 加载状态标志
         this.fileId = null; // 当前预览文件的唯一标识
+        this.scrollListener = null;
+        this.pageInfoElement = null;
+        this.totalPages = 0;
         
         // 初始化PDF.js库
         this.initializePDFJS();
@@ -100,9 +102,8 @@ class PDFPreviewer {
                 throw new Error('PDF.js库未初始化成功');
             }
 
-            // 创建PDF容器和导航控件
+            // 创建PDF容器
             this.createPDFContainer();
-            this.createNavigationControls();
 
             // 尝试从缓存中获取PDF数据
             let pdfData = PDFCacheManager.get(this.fileId);
@@ -115,6 +116,7 @@ class PDFPreviewer {
             }
             
             this.pdfDoc = pdfData.pdf;
+            this.totalPages = this.pdfDoc.numPages;
             this.currentPageNum = 1;
             this.renderedPages.clear();
 
@@ -126,6 +128,9 @@ class PDFPreviewer {
             
             // 初始化滚动监听，实现按需加载
             this.setupScrollListener();
+
+            // 添加触摸和鼠标操作支持
+            this.setupGestureSupport();
 
             // 更新加载指示器
             if (this.loadingIndicator) {
@@ -141,9 +146,6 @@ class PDFPreviewer {
                     }
                 }, 500);
             }
-            
-            // 更新导航控件状态
-            this.updateNavigationControls();
             
         } catch (error) {
             console.error('预览PDF时出错:', error);
@@ -247,125 +249,48 @@ class PDFPreviewer {
             if (this.modalContent && this.modalInfo) {
                 this.modalContent.insertBefore(this.canvasContainer, this.modalInfo);
             }
+            
+            // 创建页面信息显示区域（简洁的页脚显示）
+            this.createPageInfoDisplay();
         } catch (error) {
             console.error('创建PDF容器时出错:', error);
             throw error;
         }
     }
 
-    // 创建导航控件
-    createNavigationControls() {
+    // 创建页面信息显示区域（简洁的页脚显示）
+    createPageInfoDisplay() {
         try {
-            // 移除旧的导航控件（如果存在）
-            if (this.navContainer) {
+            // 移除旧的页码显示（如果存在）
+            if (this.pageInfoElement && this.pageInfoElement.parentNode) {
                 try {
-                    this.navContainer.parentNode.removeChild(this.navContainer);
+                    this.pageInfoElement.parentNode.removeChild(this.pageInfoElement);
                 } catch (e) {
-                    console.warn('移除旧的导航控件时出错:', e);
+                    console.warn('移除旧的页码显示时出错:', e);
                 }
             }
 
-            // 创建导航容器
-            this.navContainer = document.createElement('div');
-            this.navContainer.className = 'pdf-navigation';
-            this.navContainer.style.width = '100%';
-            this.navContainer.style.padding = '10px 0';
-            this.navContainer.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
-            this.navContainer.style.display = 'flex';
-            this.navContainer.style.justifyContent = 'center';
-            this.navContainer.style.alignItems = 'center';
-            this.navContainer.style.gap = '10px';
-            this.navContainer.style.boxSizing = 'border-box';
+            // 创建页面信息显示元素
+            this.pageInfoElement = document.createElement('div');
+            this.pageInfoElement.className = 'pdf-page-info';
+            this.pageInfoElement.style.position = 'absolute';
+            this.pageInfoElement.style.bottom = '10px';
+            this.pageInfoElement.style.right = '10px';
+            this.pageInfoElement.style.fontSize = '12px';
+            this.pageInfoElement.style.color = '#666';
+            this.pageInfoElement.style.backgroundColor = 'rgba(255, 255, 255, 0.8)';
+            this.pageInfoElement.style.padding = '4px 8px';
+            this.pageInfoElement.style.borderRadius = '4px';
+            this.pageInfoElement.style.zIndex = '10';
+            this.pageInfoElement.textContent = '页码: 1/0'; // 默认值
             
-            // 上一页按钮
-            const prevBtn = document.createElement('button');
-            prevBtn.textContent = '上一页';
-            prevBtn.className = 'pdf-nav-btn';
-            prevBtn.style.padding = '8px 16px';
-            prevBtn.style.border = 'none';
-            prevBtn.style.backgroundColor = '#007bff';
-            prevBtn.style.color = 'white';
-            prevBtn.style.borderRadius = '4px';
-            prevBtn.style.cursor = 'pointer';
-            prevBtn.disabled = true; // 初始禁用
-            prevBtn.addEventListener('click', () => this.goToPreviousPage());
-            
-            // 页码显示
-            const pageInfo = document.createElement('div');
-            pageInfo.className = 'pdf-page-info';
-            pageInfo.style.fontSize = '14px';
-            pageInfo.style.minWidth = '100px';
-            pageInfo.style.textAlign = 'center';
-            pageInfo.textContent = '页码: 0/0';
-            
-            // 下一页按钮
-            const nextBtn = document.createElement('button');
-            nextBtn.textContent = '下一页';
-            nextBtn.className = 'pdf-nav-btn';
-            nextBtn.style.padding = '8px 16px';
-            nextBtn.style.border = 'none';
-            nextBtn.style.backgroundColor = '#007bff';
-            nextBtn.style.color = 'white';
-            nextBtn.style.borderRadius = '4px';
-            nextBtn.style.cursor = 'pointer';
-            nextBtn.disabled = true; // 初始禁用
-            nextBtn.addEventListener('click', () => this.goToNextPage());
-            
-            // 缩放控件
-            const zoomControls = document.createElement('div');
-            zoomControls.style.display = 'flex';
-            zoomControls.style.gap = '5px';
-            
-            const zoomOutBtn = document.createElement('button');
-            zoomOutBtn.textContent = '-';
-            zoomOutBtn.style.padding = '8px 12px';
-            zoomOutBtn.style.border = 'none';
-            zoomOutBtn.style.backgroundColor = '#6c757d';
-            zoomOutBtn.style.color = 'white';
-            zoomOutBtn.style.borderRadius = '4px';
-            zoomOutBtn.style.cursor = 'pointer';
-            zoomOutBtn.addEventListener('click', () => this.zoomOut());
-            
-            const zoomInBtn = document.createElement('button');
-            zoomInBtn.textContent = '+';
-            zoomInBtn.style.padding = '8px 12px';
-            zoomInBtn.style.border = 'none';
-            zoomInBtn.style.backgroundColor = '#6c757d';
-            zoomInBtn.style.color = 'white';
-            zoomInBtn.style.borderRadius = '4px';
-            zoomInBtn.style.cursor = 'pointer';
-            zoomInBtn.addEventListener('click', () => this.zoomIn());
-            
-            // 缩放百分比显示
-            const zoomLevel = document.createElement('span');
-            zoomLevel.style.minWidth = '40px';
-            zoomLevel.style.textAlign = 'center';
-            zoomLevel.textContent = '100%';
-            
-            zoomControls.appendChild(zoomOutBtn);
-            zoomControls.appendChild(zoomLevel);
-            zoomControls.appendChild(zoomInBtn);
-            
-            // 添加到导航容器
-            this.navContainer.appendChild(prevBtn);
-            this.navContainer.appendChild(pageInfo);
-            this.navContainer.appendChild(nextBtn);
-            this.navContainer.appendChild(zoomControls);
-            
-            // 保存引用
-            this.navElements = {
-                prevBtn,
-                nextBtn,
-                pageInfo,
-                zoomLevel
-            };
-            
-            // 添加到模态框内容中，放在PDF容器上方
-            if (this.modalContent && this.canvasContainer) {
-                this.modalContent.insertBefore(this.navContainer, this.canvasContainer);
+            // 添加到模态框内容中
+            if (this.modalContent) {
+                this.modalContent.style.position = 'relative';
+                this.modalContent.appendChild(this.pageInfoElement);
             }
         } catch (error) {
-            console.error('创建导航控件时出错:', error);
+            console.error('创建页码显示时出错:', error);
         }
     }
 
@@ -404,16 +329,8 @@ class PDFPreviewer {
             canvas.style.boxShadow = '0 1px 3px rgba(0,0,0,0.1)';
             canvas.style.backgroundColor = 'white';
             
-            // 添加页码标记
-            const pageNumber = document.createElement('div');
-            pageNumber.style.fontSize = '12px';
-            pageNumber.style.color = '#666';
-            pageNumber.style.marginTop = '5px';
-            pageNumber.textContent = `第 ${num} 页`;
-            
             // 添加到容器
             pageContainer.appendChild(canvas);
-            pageContainer.appendChild(pageNumber);
             this.canvasContainer.appendChild(pageContainer);
 
             // 渲染页面内容
@@ -432,6 +349,9 @@ class PDFPreviewer {
             
             await renderTask.promise;
             console.log(`已渲染第${num}页`);
+            
+            // 更新页码显示
+            this.updatePageInfoDisplay();
             
         } catch (error) {
             console.error(`渲染第${num}页时出错:`, error);
@@ -524,6 +444,76 @@ class PDFPreviewer {
         this.scrollListener = checkScroll;
     }
 
+    // 设置手势支持（缩放和滚动）
+    setupGestureSupport() {
+        if (!this.canvasContainer) return;
+        
+        let startX, startY, startScrollLeft, startScrollTop;
+        let scaleGestureEnabled = false;
+        let lastDistance = 0;
+        let lastScale = 1;
+        
+        // 鼠标滚轮缩放支持
+        this.canvasContainer.addEventListener('wheel', (e) => {
+            // 仅当按住Ctrl键时才缩放
+            if (e.ctrlKey) {
+                e.preventDefault();
+                const delta = e.deltaY > 0 ? -0.1 : 0.1;
+                const newScale = Math.max(0.5, Math.min(3, this.scale + delta));
+                if (newScale !== this.scale) {
+                    this.setScale(newScale);
+                }
+            }
+        }, { passive: false });
+        
+        // 触摸事件支持（移动设备）
+        this.canvasContainer.addEventListener('touchstart', (e) => {
+            startX = e.touches[0].clientX;
+            startY = e.touches[0].clientY;
+            startScrollLeft = this.canvasContainer.scrollLeft;
+            startScrollTop = this.canvasContainer.scrollTop;
+            
+            // 检测双指缩放
+            if (e.touches.length === 2) {
+                scaleGestureEnabled = true;
+                const dx = e.touches[0].clientX - e.touches[1].clientX;
+                const dy = e.touches[0].clientY - e.touches[1].clientY;
+                lastDistance = Math.sqrt(dx * dx + dy * dy);
+                lastScale = this.scale;
+            }
+        }, { passive: true });
+        
+        this.canvasContainer.addEventListener('touchmove', (e) => {
+            if (scaleGestureEnabled && e.touches.length === 2) {
+                e.preventDefault();
+                const dx = e.touches[0].clientX - e.touches[1].clientX;
+                const dy = e.touches[0].clientY - e.touches[1].clientY;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                const scaleFactor = distance / lastDistance;
+                const newScale = Math.max(0.5, Math.min(3, lastScale * scaleFactor));
+                
+                if (Math.abs(newScale - this.scale) > 0.05) { // 只有当缩放变化足够大时才更新
+                    this.setScale(newScale);
+                    lastScale = newScale;
+                    lastDistance = distance;
+                }
+            } else if (e.touches.length === 1) {
+                const x = e.touches[0].clientX;
+                const y = e.touches[0].clientY;
+                const walkX = x - startX;
+                const walkY = y - startY;
+                
+                this.canvasContainer.scrollLeft = startScrollLeft - walkX;
+                this.canvasContainer.scrollTop = startScrollTop - walkY;
+            }
+        }, { passive: false });
+        
+        this.canvasContainer.addEventListener('touchend', () => {
+            scaleGestureEnabled = false;
+        }, { passive: true });
+    }
+
     // 更新当前页码
     updateCurrentPage() {
         if (!this.canvasContainer || !this.pdfDoc) return;
@@ -552,90 +542,23 @@ class PDFPreviewer {
         
         if (closestPage !== this.currentPageNum) {
             this.currentPageNum = closestPage;
-            this.updateNavigationControls();
+            this.updatePageInfoDisplay();
         }
     }
 
-    // 更新导航控件状态
-    updateNavigationControls() {
-        if (!this.navElements || !this.pdfDoc) return;
-        
-        const { prevBtn, nextBtn, pageInfo, zoomLevel } = this.navElements;
-        
-        // 更新页码信息
-        pageInfo.textContent = `页码: ${this.currentPageNum}/${this.pdfDoc.numPages}`;
-        
-        // 更新按钮状态
-        prevBtn.disabled = this.currentPageNum <= 1;
-        nextBtn.disabled = this.currentPageNum >= this.pdfDoc.numPages;
-        
-        // 更新缩放百分比
-        zoomLevel.textContent = `${Math.round(this.scale * 100)}%`;
-        
-        // 根据禁用状态更新按钮样式
-        prevBtn.style.opacity = prevBtn.disabled ? '0.5' : '1';
-        prevBtn.style.cursor = prevBtn.disabled ? 'not-allowed' : 'pointer';
-        nextBtn.style.opacity = nextBtn.disabled ? '0.5' : '1';
-        nextBtn.style.cursor = nextBtn.disabled ? 'not-allowed' : 'pointer';
-    }
-
-    // 上一页
-    goToPreviousPage() {
-        if (this.currentPageNum > 1) {
-            this.goToPage(this.currentPageNum - 1);
-        }
-    }
-
-    // 下一页
-    goToNextPage() {
-        if (this.pdfDoc && this.currentPageNum < this.pdfDoc.numPages) {
-            this.goToPage(this.currentPageNum + 1);
-        }
-    }
-
-    // 跳转到指定页码
-    goToPage(pageNum) {
-        if (!this.pdfDoc || pageNum < 1 || pageNum > this.pdfDoc.numPages) return;
-        
-        this.currentPageNum = pageNum;
-        
-        // 确保页面已渲染
-        this.renderPage(pageNum);
-        
-        // 滚动到指定页面
-        setTimeout(() => {
-            const pageElement = document.getElementById(`pdf-page-${pageNum}`);
-            if (pageElement && this.canvasContainer) {
-                const containerRect = this.canvasContainer.getBoundingClientRect();
-                const pageRect = pageElement.getBoundingClientRect();
-                const scrollTo = pageElement.offsetTop - containerRect.top - 50; // 50px的上边距
-                this.canvasContainer.scrollTo({ top: scrollTo, behavior: 'smooth' });
-            }
-        }, 100);
-        
-        // 更新导航控件状态
-        this.updateNavigationControls();
-    }
-
-    // 放大
-    zoomIn() {
-        const newScale = this.scale * 1.2;
-        if (newScale <= 3) { // 最大放大3倍
-            this.setScale(newScale);
-        }
-    }
-
-    // 缩小
-    zoomOut() {
-        const newScale = this.scale / 1.2;
-        if (newScale >= 0.5) { // 最小缩小0.5倍
-            this.setScale(newScale);
+    // 更新页码信息显示
+    updatePageInfoDisplay() {
+        if (this.pageInfoElement && this.pdfDoc) {
+            this.pageInfoElement.textContent = `页码: ${this.currentPageNum}/${this.pdfDoc.numPages}`;
         }
     }
 
     // 设置缩放比例
     setScale(scale) {
         this.scale = scale;
+        
+        // 保存当前页码
+        const currentPage = this.currentPageNum;
         
         // 重新渲染当前页和附近的页面
         this.renderedPages.clear();
@@ -648,16 +571,13 @@ class PDFPreviewer {
         }
         
         // 重新渲染当前页和前后各一页
-        this.renderPage(this.currentPageNum);
-        if (this.pdfDoc && this.currentPageNum > 1) {
-            this.renderPage(this.currentPageNum - 1);
+        this.renderPage(currentPage);
+        if (this.pdfDoc && currentPage > 1) {
+            this.renderPage(currentPage - 1);
         }
-        if (this.pdfDoc && this.currentPageNum < this.pdfDoc.numPages) {
-            this.renderPage(this.currentPageNum + 1);
+        if (this.pdfDoc && currentPage < this.pdfDoc.numPages) {
+            this.renderPage(currentPage + 1);
         }
-        
-        // 更新导航控件状态
-        this.updateNavigationControls();
     }
 
     // 检测设备类型并设置合适的缩放比例
@@ -745,21 +665,21 @@ class PDFPreviewer {
                 }
             }
             
-            // 移除导航控件
-            if (this.navContainer && this.navContainer.parentNode) {
+            // 移除页码显示
+            if (this.pageInfoElement && this.pageInfoElement.parentNode) {
                 try {
-                    this.navContainer.parentNode.removeChild(this.navContainer);
+                    this.pageInfoElement.parentNode.removeChild(this.pageInfoElement);
                 } catch (e) {
-                    console.warn('移除导航控件时出错:', e);
+                    console.warn('移除页码显示时出错:', e);
                 }
             }
             
             // 重置状态
             this.canvasContainer = null;
-            this.navContainer = null;
-            this.navElements = null;
+            this.pageInfoElement = null;
             this.pdfDoc = null;
             this.currentPageNum = 1;
+            this.totalPages = 0;
             this.renderedPages.clear();
             this.isLoading = false;
             this.fileId = null;
