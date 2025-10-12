@@ -149,12 +149,22 @@ class PDFPreviewer {
             // 设置官方PDF.js查看器的URL（使用相对路径）
             const viewerUrl = 'pdf/web/viewer.html';
             
+            // 添加详细的调试信息
+            console.log(`准备加载PDF查看器，文件URL长度: ${this.pdfData?.dataUrl ? this.pdfData.dataUrl.length : '0'} 字符`);
+            console.log(`浏览器环境: ${navigator.userAgent}`);
+            
             // 为了在iOS和全平台更好地工作，添加必要的查询参数
             const viewerParams = [];
             viewerParams.push('disableRange=true'); // 禁用范围请求，改善iOS兼容性
             viewerParams.push('disableStream=true'); // 禁用流式传输，改善iOS兼容性
             viewerParams.push('pdfjs.disableWorker=true'); // 在某些iOS环境下禁用worker
             viewerParams.push('printResolution=150'); // 设置打印分辨率
+            
+            // 为不同设备类型添加特定参数
+            if (/iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream) {
+                console.log('检测到iOS设备，应用特殊兼容性参数');
+                viewerParams.push('ios=true');
+            }
             
             // 处理PDF文件URL
             if (this.pdfData && this.pdfData.dataUrl) {
@@ -164,17 +174,19 @@ class PDFPreviewer {
             }
             
             // 构建最终URL
-            const url = `${viewerUrl}?${viewerParams.join('&')}`;
+            let url = `${viewerUrl}?${viewerParams.join('&')}`;
+            
+            // 为了在某些环境下更好地工作，尝试使用绝对路径
+            try {
+                const absoluteViewerUrl = new URL(viewerUrl, window.location.href).href;
+                url = `${absoluteViewerUrl}?${viewerParams.join('&')}`;
+                console.log(`使用绝对URL: ${url}`);
+            } catch (e) {
+                console.warn('无法构建绝对URL，继续使用相对URL');
+            }
             
             console.log(`加载PDF查看器: ${url}`);
             console.log(`当前路径: ${window.location.href}`);
-            
-            // 检查路径是否存在（简单的客户端检查）
-            const testImage = new Image();
-            testImage.onerror = function() {
-                console.warn('PDF查看器路径可能不存在或无法访问:', viewerUrl);
-            };
-            testImage.src = viewerUrl; // 这只是一个简单的检查，不会实际加载文件
             
             // 设置iframe的src
             this.iframe.src = url;
