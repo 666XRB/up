@@ -94,20 +94,6 @@ class PDFPreviewer {
             this.iframe.style.borderRadius = '10px';
             this.iframe.title = 'PDF查看器';
             
-            // 添加iOS和移动设备适配属性
-            this.iframe.setAttribute('allow', 'fullscreen');
-            this.iframe.setAttribute('webkitallowfullscreen', 'true');
-            this.iframe.setAttribute('mozallowfullscreen', 'true');
-            
-            // 尝试解决iOS中的安全策略限制
-            this.iframe.setAttribute('sandbox', 'allow-same-origin allow-scripts allow-popups allow-forms');
-            
-            // 检测是否为移动设备并添加特定样式
-            if (window.innerWidth <= 768) {
-                this.iframe.style.height = '100vh';
-                this.iframe.style.maxHeight = '90vh'; // 为移动设备保留一些顶部空间
-            }
-            
             // 添加到容器
             this.container.appendChild(this.iframe);
             
@@ -143,25 +129,13 @@ class PDFPreviewer {
             // 设置官方PDF.js查看器的URL（使用相对路径）
             const viewerUrl = 'pdf/web/viewer.html';
             
-            // 处理iOS和跨平台兼容性
+            // 如果有文件URL，将其作为查询参数传递给查看器
             let url = viewerUrl;
-            
-            // 为了在iOS和全平台更好地工作，添加必要的查询参数
-            const viewerParams = [];
-            viewerParams.push('disableRange=true'); // 禁用范围请求，改善iOS兼容性
-            viewerParams.push('disableStream=true'); // 禁用流式传输，改善iOS兼容性
-            viewerParams.push('pdfjs.disableWorker=true'); // 在某些iOS环境下禁用worker
-            viewerParams.push('printResolution=150'); // 设置打印分辨率
-            
-            // 处理PDF文件URL
             if (this.pdfData && this.pdfData.dataUrl) {
                 // 对dataUrl进行编码
                 const encodedUrl = encodeURIComponent(this.pdfData.dataUrl);
-                viewerParams.push(`file=${encodedUrl}`);
+                url = `${viewerUrl}?file=${encodedUrl}`;
             }
-            
-            // 构建最终URL
-            url = `${viewerUrl}?${viewerParams.join('&')}`;
             
             console.log(`加载PDF查看器: ${url}`);
             // 设置iframe的src
