@@ -89,10 +89,30 @@ class PDFPreviewer {
             this.iframe = document.createElement('iframe');
             this.iframe.className = 'pdf-viewer-iframe';
             this.iframe.style.width = '100%';
-            this.iframe.style.height = modalContent ? '70vh' : '100%';
+            
+            // 根据设备类型设置高度
+            const isMobile = window.innerWidth <= 768;
+            this.iframe.style.height = isMobile ? '100vh' : (modalContent ? '70vh' : '100%');
+            
             this.iframe.style.border = 'none';
             this.iframe.style.borderRadius = '10px';
             this.iframe.title = 'PDF查看器';
+            
+            // 添加iOS和移动设备适配属性
+            this.iframe.setAttribute('allow', 'fullscreen');
+            this.iframe.setAttribute('webkitallowfullscreen', 'true');
+            this.iframe.setAttribute('mozallowfullscreen', 'true');
+            
+            // 尝试解决iOS中的安全策略限制
+            this.iframe.setAttribute('sandbox', 'allow-same-origin allow-scripts allow-popups allow-forms');
+            
+            // 检测是否为移动设备并添加特定样式
+            if (isMobile) {
+                this.iframe.style.maxHeight = '90vh'; // 为移动设备保留一些顶部空间
+                this.iframe.style.objectFit = 'contain';
+            }
+            
+            console.log(`创建iframe，设备类型: ${isMobile ? '移动设备' : '桌面设备'}`);
             
             // 添加到容器
             this.container.appendChild(this.iframe);
@@ -129,15 +149,33 @@ class PDFPreviewer {
             // 设置官方PDF.js查看器的URL（使用相对路径）
             const viewerUrl = 'pdf/web/viewer.html';
             
-            // 如果有文件URL，将其作为查询参数传递给查看器
-            let url = viewerUrl;
+            // 为了在iOS和全平台更好地工作，添加必要的查询参数
+            const viewerParams = [];
+            viewerParams.push('disableRange=true'); // 禁用范围请求，改善iOS兼容性
+            viewerParams.push('disableStream=true'); // 禁用流式传输，改善iOS兼容性
+            viewerParams.push('pdfjs.disableWorker=true'); // 在某些iOS环境下禁用worker
+            viewerParams.push('printResolution=150'); // 设置打印分辨率
+            
+            // 处理PDF文件URL
             if (this.pdfData && this.pdfData.dataUrl) {
                 // 对dataUrl进行编码
                 const encodedUrl = encodeURIComponent(this.pdfData.dataUrl);
-                url = `${viewerUrl}?file=${encodedUrl}`;
+                viewerParams.push(`file=${encodedUrl}`);
             }
             
+            // 构建最终URL
+            const url = `${viewerUrl}?${viewerParams.join('&')}`;
+            
             console.log(`加载PDF查看器: ${url}`);
+            console.log(`当前路径: ${window.location.href}`);
+            
+            // 检查路径是否存在（简单的客户端检查）
+            const testImage = new Image();
+            testImage.onerror = function() {
+                console.warn('PDF查看器路径可能不存在或无法访问:', viewerUrl);
+            };
+            testImage.src = viewerUrl; // 这只是一个简单的检查，不会实际加载文件
+            
             // 设置iframe的src
             this.iframe.src = url;
             
